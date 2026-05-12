@@ -58,6 +58,11 @@ output "access_connector_principal_id" {
   description = "Managed identity principal ID of the access connector"
 }
 
+output "random_suffix" {
+  value       = random_string.suffix.result
+  description = "Shared random suffix for globally-unique resource names"
+}
+
 output "tags" {
   value       = local.tags
   description = "Common tag set applied to all foundation resources"

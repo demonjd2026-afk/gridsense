@@ -1,7 +1,6 @@
 # ============================================================================
 # Dev Environment Composition
-# Wires together the foundation, eventhubs, and databricks modules.
-# This is what `terraform apply` is run against for the dev environment.
+# Wires together foundation, eventhubs, databricks, and container-apps modules.
 # ============================================================================
 
 terraform {
@@ -18,7 +17,6 @@ terraform {
     }
   }
 
-  # Remote state in Azure Storage (bootstrapped manually before first apply)
   backend "azurerm" {
     resource_group_name  = "rg-gridsense-tfstate"
     storage_account_name = "sttfstategs21126"
@@ -39,9 +37,6 @@ provider "azurerm" {
   }
 }
 
-# ----------------------------------------------------------------------------
-# Locals
-# ----------------------------------------------------------------------------
 locals {
   env      = "dev"
   location = "centralindia"
@@ -86,8 +81,23 @@ module "databricks" {
 }
 
 # ----------------------------------------------------------------------------
-# Outputs surfaced from this env (useful for `terraform output` debugging
-# and for CI/CD to pick up downstream-needed values)
+# Container Apps: ACR + environment + UAMI + role assignments for producers
+# ----------------------------------------------------------------------------
+module "container_apps" {
+  source = "../../modules/container-apps"
+
+  env                        = local.env
+  project                    = local.project
+  rg_name                    = module.foundation.resource_group_name
+  location                   = module.foundation.location
+  tags                       = module.foundation.tags
+  log_analytics_workspace_id = module.foundation.log_analytics_workspace_id
+  eventhubs_namespace_id     = module.eventhubs.namespace_id
+  random_suffix              = module.foundation.random_suffix
+}
+
+# ----------------------------------------------------------------------------
+# Outputs
 # ----------------------------------------------------------------------------
 output "resource_group_name" {
   value = module.foundation.resource_group_name
@@ -119,4 +129,20 @@ output "kafka_bootstrap_server" {
 
 output "databricks_workspace_url" {
   value = module.databricks.workspace_url
+}
+
+output "acr_login_server" {
+  value = module.container_apps.acr_login_server
+}
+
+output "container_app_environment_id" {
+  value = module.container_apps.container_app_environment_id
+}
+
+output "producers_uami_id" {
+  value = module.container_apps.producers_uami_id
+}
+
+output "producers_uami_client_id" {
+  value = module.container_apps.producers_uami_client_id
 }
