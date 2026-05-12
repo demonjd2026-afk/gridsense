@@ -1,0 +1,154 @@
+# ============================================================================
+# GridSense .gitignore
+# ============================================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# uv
+.uv/
+uv.lock
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Linting
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb_checkpoints
+
+# --- Terraform ---
+# Local .terraform directories
+**/.terraform/*
+
+# .tfstate files - NEVER commit these
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude all .tfvars files (they may contain secrets)
+# Use *.tfvars.example to share non-sensitive examples
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Plan files
+*tfplan*
+*.tfplan
+
+# CLI configuration files
+.terraformrc
+terraform.rc
+
+# Lock files - DO commit these to keep providers consistent across team
+# .terraform.lock.hcl  <-- intentionally not ignored
+
+# --- Databricks ---
+.databricks/
+.databricks-cli-cfg
+*.dbignore
+
+# --- Azure ---
+.azure/
+
+# --- Secrets and credentials (paranoia layer) ---
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.local
+.env.*.local
+secrets/
+credentials.json
+service-principal.json
+
+# --- IDE ---
+.vscode/
+!.vscode/settings.json.example
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# --- OS ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Logs ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Build artifacts ---
+*.tar.gz
+*.zip
+node_modules/
+
+# --- Docker ---
+.dockerignore.bak
+
+# --- Power BI ---
+# .pbix files are binary - commit them, but ignore caches
+*.pbix.bak
+~$*.pbix
+
+# --- Project-specific ---
+# Local-only experiments
+scratch/
+sandbox/
+*.scratch
