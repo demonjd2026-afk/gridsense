@@ -1,0 +1,83 @@
+# ============================================================================
+# GridSense - Databricks Asset Bundle
+# ----------------------------------------------------------------------------
+# Asset Bundles let you deploy Databricks resources (notebooks, jobs, DLT
+# pipelines, models) as code, with per-environment targeting.
+#
+# Common commands (run from this directory):
+#   databricks bundle validate -t dev      # check config without deploying
+#   databricks bundle deploy -t dev        # deploy notebooks + resources
+#   databricks bundle run <job_name> -t dev # trigger a deployed job
+#   databricks bundle destroy -t dev       # remove deployed resources
+# ============================================================================
+
+bundle:
+  name: gridsense
+
+# ----------------------------------------------------------------------------
+# Variables: per-target values surfaced into resource YAML files
+# ----------------------------------------------------------------------------
+variables:
+  catalog:
+    description: "Unity Catalog name for this target"
+    default: dbw_gridsense_dev
+
+  storage_account:
+    description: "ADLS Gen2 storage account name"
+    default: stgridsensedevdx0kcg
+
+  bronze_root:
+    description: "Bronze container root path (abfss://...)"
+    default: abfss://bronze@stgridsensedevdx0kcg.dfs.core.windows.net/
+
+  silver_root:
+    description: "Silver container root path"
+    default: abfss://silver@stgridsensedevdx0kcg.dfs.core.windows.net/
+
+  gold_root:
+    description: "Gold container root path"
+    default: abfss://gold@stgridsensedevdx0kcg.dfs.core.windows.net/
+
+  eh_namespace:
+    description: "Event Hubs namespace name"
+    default: evhns-gridsense-dev
+
+  kafka_bootstrap:
+    description: "Kafka-compatible bootstrap server"
+    default: evhns-gridsense-dev.servicebus.windows.net:9093
+
+# ----------------------------------------------------------------------------
+# Resource includes: bring in job/pipeline definitions from sibling folders
+# (these directories exist but are empty until Phase 5+)
+# ----------------------------------------------------------------------------
+include:
+  - resources/jobs/*.yml
+  - resources/pipelines/*.yml
+
+# ----------------------------------------------------------------------------
+# Targets: per-environment configuration
+# ----------------------------------------------------------------------------
+targets:
+  # Default target for local dev work
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://adb-7405606858641628.8.azuredatabricks.net
+    variables:
+      catalog: dbw_gridsense_dev
+
+  # Future targets (placeholders for Phase 11 CI/CD)
+  staging:
+    mode: production
+    workspace:
+      host: https://adb-7405606858641628.8.azuredatabricks.net # TODO: replace with staging workspace URL
+    variables:
+      catalog: dbw_gridsense_staging
+
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-7405606858641628.8.azuredatabricks.net # TODO: replace with prod workspace URL
+    variables:
+      catalog: dbw_gridsense_prod

@@ -1,0 +1,28 @@
+# ============================================================================
+# Project-level ruff configuration
+# Applies to all Python files in the repo unless overridden by a closer config.
+# ============================================================================
+
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+]
+ignore = [
+    "E501",  # line-too-long (formatter handles it)
+]
+
+[lint.per-file-ignores]
+# Databricks notebooks injected globals: spark, dbutils, sc, sqlContext, display, etc.
+# F821 = undefined-name. We tolerate it because runtime provides these.
+"databricks/src/**/*.py" = ["F821", "E402", "F401"]
+
+# Allow assert False in tests
+"**/tests/**/*.py" = ["B011"]
