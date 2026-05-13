@@ -41,3 +41,15 @@ output "producers_uami_principal_id" {
   value       = azurerm_user_assigned_identity.producers.principal_id
   description = "Principal (object) ID of the UAMI"
 }
+
+output "producer_apps" {
+  value = {
+    for k, app in azurerm_container_app.producer : k => {
+      name            = app.name
+      id              = app.id
+      image           = app.template[0].container[0].image
+      latest_revision = app.latest_revision_name
+    }
+  }
+  description = "Map of producer name -> deployed Container App details"
+}

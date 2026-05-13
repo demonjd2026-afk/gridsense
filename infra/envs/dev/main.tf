@@ -93,7 +93,23 @@ module "container_apps" {
   tags                       = module.foundation.tags
   log_analytics_workspace_id = module.foundation.log_analytics_workspace_id
   eventhubs_namespace_id     = module.eventhubs.namespace_id
+  eventhubs_namespace_name   = module.eventhubs.namespace_name
   random_suffix              = module.foundation.random_suffix
+
+  producers = {
+    "carbon-intensity" = {
+      image_repo      = "carbon-intensity"
+      image_tag       = "v10"
+      eventhub_topic  = "carbon-intensity"
+      poll_interval_s = 300
+    }
+    "open-meteo" = {
+      image_repo      = "open-meteo"
+      image_tag       = "v1"
+      eventhub_topic  = "open-meteo"
+      poll_interval_s = 900
+    }
+  }
 }
 
 # ----------------------------------------------------------------------------

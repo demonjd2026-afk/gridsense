@@ -95,3 +95,75 @@ resource "azurerm_role_assignment" "producers_eventhubs_sender" {
   role_definition_name = "Azure Event Hubs Data Sender"
   principal_id         = azurerm_user_assigned_identity.producers.principal_id
 }
+
+# ----------------------------------------------------------------------------
+# Producer Container Apps
+# One Container App per entry in var.producers.
+#
+# Each app:
+#   - Pulls its image from our ACR using the producers UAMI
+#   - Runs with the same UAMI attached for Event Hubs OAuth
+#   - Receives EVENTHUB_NAMESPACE, EVENTHUB_TOPIC, POLL_INTERVAL_S, and
+#     AZURE_CLIENT_ID env vars so the producer code authenticates correctly
+#   - Pinned to 1 replica (these are long-running pollers, autoscale would
+#     just thrash and risk duplicate events)
+# ----------------------------------------------------------------------------
+resource "azurerm_container_app" "producer" {
+  for_each = var.producers
+
+  name                         = "ca-${each.key}-${var.env}"
+  resource_group_name          = var.rg_name
+  container_app_environment_id = azurerm_container_app_environment.this.id
+  revision_mode                = "Single"
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.producers.id]
+  }
+
+  registry {
+    server   = azurerm_container_registry.this.login_server
+    identity = azurerm_user_assigned_identity.producers.id
+  }
+
+  template {
+    min_replicas = each.value.min_replicas
+    max_replicas = each.value.max_replicas
+
+    container {
+      name   = each.key
+      image  = "${azurerm_container_registry.this.login_server}/${each.value.image_repo}:${each.value.image_tag}"
+      cpu    = each.value.cpu
+      memory = each.value.memory
+
+      env {
+        name  = "EVENTHUB_NAMESPACE"
+        value = var.eventhubs_namespace_name
+      }
+      env {
+        name  = "EVENTHUB_TOPIC"
+        value = each.value.eventhub_topic
+      }
+      env {
+        name  = "POLL_INTERVAL_S"
+        value = tostring(each.value.poll_interval_s)
+      }
+      # Required: DefaultAzureCredential reads this to disambiguate when
+      # multiple managed identities could be in play. Without it, auth
+      # against Event Hubs can fail or pick the wrong identity.
+      env {
+        name  = "AZURE_CLIENT_ID"
+        value = azurerm_user_assigned_identity.producers.client_id
+      }
+    }
+  }
+
+  tags = var.tags
+
+  # The role assignments must exist before the app starts pulling images
+  # or attempting to publish events.
+  depends_on = [
+    azurerm_role_assignment.producers_acr_pull,
+    azurerm_role_assignment.producers_eventhubs_sender,
+  ]
+}

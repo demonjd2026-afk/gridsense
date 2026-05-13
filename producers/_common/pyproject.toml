@@ -1,0 +1,21 @@
+[project]
+name = "gridsense-common"
+version = "0.1.0"
+description = "Shared utilities for GridSense Event Hubs producers"
+requires-python = ">=3.11"
+authors = [
+    { name = "Jayanth Dolai" }
+]
+dependencies = [
+    "aiokafka>=0.11",
+    "azure-identity>=1.17",
+    "structlog>=24.1",
+    "aiohttp>=3.9",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

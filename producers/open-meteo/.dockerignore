@@ -1,0 +1,52 @@
+# This .dockerignore applies when building from the repo root.
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.venv/
+venv/
+.uv/
+uv.lock
+
+# Other producers (only open-meteo and _common are needed in build context)
+producers/carbon-intensity/
+producers/entsoe/
+
+# Non-producer dirs
+infra/
+databricks/
+powerbi/
+docs/
+.github/
+scripts/
+
+# Testing / linting
+**/tests/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.coverage
+**/htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docs
+README.md
+*.md
+
+# Local-only
+.env
+.env.*
+secrets/
+_local_notes.md
