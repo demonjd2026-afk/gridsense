@@ -11,6 +11,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.110"
     }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = "~> 2.53"
+    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.6"
@@ -36,6 +40,11 @@ provider "azurerm" {
     }
   }
 }
+
+# AzureAD provider for Service Principal management.
+# Required permissions on the executing identity: Application.ReadWrite.OwnedBy
+# (or Application.ReadWrite.All for org-wide SP management).
+provider "azuread" {}
 
 locals {
   env      = "dev"
@@ -65,6 +74,9 @@ module "eventhubs" {
   rg_name  = module.foundation.resource_group_name
   location = module.foundation.location
   tags     = module.foundation.tags
+
+  databricks_access_connector_principal_id = module.foundation.access_connector_principal_id
+  databricks_eh_sp_object_id               = module.foundation.databricks_eh_sp_object_id
 }
 
 # ----------------------------------------------------------------------------

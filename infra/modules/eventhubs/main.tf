@@ -68,3 +68,28 @@ resource "azurerm_eventhub_consumer_group" "bronze" {
   eventhub_name       = each.value.name
   resource_group_name = var.rg_name
 }
+
+
+# ----------------------------------------------------------------------------
+# Role assignment: Databricks Access Connector -> Azure Event Hubs Data Receiver
+# Required so Bronze streaming jobs in Databricks can consume from any topic
+# in this namespace using the cluster's managed identity (no connection strings).
+# Scoped to the namespace so adding new topics doesn't need additional grants.
+# ----------------------------------------------------------------------------
+resource "azurerm_role_assignment" "databricks_eventhubs_receiver" {
+  scope                = azurerm_eventhub_namespace.this.id
+  role_definition_name = "Azure Event Hubs Data Receiver"
+  principal_id         = var.databricks_access_connector_principal_id
+}
+
+
+# ----------------------------------------------------------------------------
+# Role assignment: Databricks-EH SP -> Azure Event Hubs Data Receiver
+# Mirrors the Databricks Access Connector grant above; needed because
+# Databricks Spark Kafka client uses SP OAuth rather than the cluster MI.
+# ----------------------------------------------------------------------------
+resource "azurerm_role_assignment" "databricks_eh_sp_receiver" {
+  scope                = azurerm_eventhub_namespace.this.id
+  role_definition_name = "Azure Event Hubs Data Receiver"
+  principal_id         = var.databricks_eh_sp_object_id
+}

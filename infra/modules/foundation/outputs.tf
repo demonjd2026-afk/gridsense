@@ -67,3 +67,14 @@ output "tags" {
   value       = local.tags
   description = "Common tag set applied to all foundation resources"
 }
+
+
+output "databricks_eh_sp_object_id" {
+  value       = azuread_service_principal.databricks_eh.object_id
+  description = "Object ID (principalId) of the SP used by Databricks for EH auth"
+}
+
+output "databricks_eh_sp_client_id" {
+  value       = azuread_service_principal.databricks_eh.client_id
+  description = "Application (client) ID of the SP used by Databricks for EH auth"
+}

@@ -1,0 +1,49 @@
+# ============================================================================
+# Bronze Carbon Intensity - Asset Bundle Job
+# ----------------------------------------------------------------------------
+# Triggers carbon_intensity_bronze.py hourly. Uses serverless job compute
+# (no cluster definition required) so we pay only for actual runtime.
+# ============================================================================
+
+resources:
+  jobs:
+    bronze_carbon_intensity:
+      name: "[${bundle.target}] Bronze - Carbon Intensity"
+      description: "Streams carbon-intensity topic into bronze.carbon_intensity (availableNow trigger, hourly schedule)."
+
+      # No `job_clusters` block = serverless job compute.
+      # Each task runs in an isolated, ephemeral serverless environment.
+
+      schedule:
+        # Hourly at 5 minutes past the hour. The 5-min offset is so we don't
+        # collide with the producer's :00 publish (carbon-intensity polls
+        # every 5 min so events are well-distributed, but :05 keeps logs
+        # cleaner if you're correlating producer and consumer activity).
+        quartz_cron_expression: "0 5 * * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1   # one stream at a time; checkpoint serializes anyway
+
+      tasks:
+        - task_key: bronze_carbon_intensity
+          notebook_task:
+            notebook_path: ../../src/bronze/carbon_intensity_bronze.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              eh_namespace: ${var.eh_namespace}
+              kafka_bootstrap: ${var.kafka_bootstrap}
+              bronze_root: ${var.bronze_root}
+
+          # Retry policy: ENTSO-E + carbon-intensity APIs can have transient
+          # flakes; if a micro-batch fails we'd rather retry once than fail
+          # the whole hour's ingest.
+          max_retries: 2
+          min_retry_interval_millis: 60000  # 1 minute
+          retry_on_timeout: true
+          timeout_seconds: 1800  # 30 min hard ceiling per run
+
+      email_notifications:
+        on_failure: []  # add your email here for prod
+        no_alert_for_skipped_runs: true

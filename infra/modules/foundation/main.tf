@@ -153,3 +153,64 @@ resource "azurerm_role_assignment" "access_connector_storage" {
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_databricks_access_connector.this.identity[0].principal_id
 }
+
+
+# ============================================================================
+# Service Principal for Databricks -> Event Hubs auth
+# ----------------------------------------------------------------------------
+# Databricks does not natively support cluster managed identity for Kafka
+# client authentication to Event Hubs (as of late 2025). The workaround is
+# a Service Principal with a client secret, stored in Key Vault, surfaced
+# into Databricks via a KV-backed secret scope.
+#
+# When Databricks Runtime 16.1+ Unity Catalog Service Credentials become
+# generally available for Kafka auth, this SP can be retired in favor of
+# the existing access connector UAMI (which already has Data Receiver).
+# ============================================================================
+
+resource "azuread_application" "databricks_eh" {
+  display_name = "sp-${var.project}-databricks-eh-${var.env}"
+  description  = "Service Principal used by Databricks to authenticate to Event Hubs Kafka surface"
+}
+
+resource "azuread_service_principal" "databricks_eh" {
+  client_id = azuread_application.databricks_eh.client_id
+}
+
+resource "azuread_service_principal_password" "databricks_eh" {
+  service_principal_id = azuread_service_principal.databricks_eh.id
+  display_name         = "databricks-eh-secret"
+  # 1 year. Rotate via:
+  #   terraform taint module.foundation.azuread_service_principal_password.databricks_eh
+  #   terraform apply
+  end_date_relative = "8760h"
+}
+
+# Store the SP client secret in Key Vault so Databricks can read it via the
+# KV-backed secret scope. The Databricks job code calls dbutils.secrets.get
+# with this secret name.
+resource "azurerm_key_vault_secret" "databricks_eh_sp_secret" {
+  name         = "databricks-eh-sp-secret"
+  value        = azuread_service_principal_password.databricks_eh.value
+  key_vault_id = azurerm_key_vault.this.id
+
+  # Without this, terraform might try to write the secret before the KV
+  # role assignment for the executing user has propagated.
+  depends_on = [azurerm_role_assignment.kv_admin_user]
+}
+
+# Also store the SP client ID and tenant ID (NOT secrets, but convenient
+# to fetch from one place; the streaming code reads all three at startup).
+resource "azurerm_key_vault_secret" "databricks_eh_sp_client_id" {
+  name         = "databricks-eh-sp-client-id"
+  value        = azuread_service_principal.databricks_eh.client_id
+  key_vault_id = azurerm_key_vault.this.id
+  depends_on   = [azurerm_role_assignment.kv_admin_user]
+}
+
+resource "azurerm_key_vault_secret" "databricks_eh_sp_tenant_id" {
+  name         = "databricks-eh-sp-tenant-id"
+  value        = data.azurerm_client_config.current.tenant_id
+  key_vault_id = azurerm_key_vault.this.id
+  depends_on   = [azurerm_role_assignment.kv_admin_user]
+}

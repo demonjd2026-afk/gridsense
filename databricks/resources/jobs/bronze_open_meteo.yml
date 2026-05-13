@@ -1,0 +1,39 @@
+# ============================================================================
+# Bronze Open-Meteo - Asset Bundle Job
+# Triggers open_meteo_bronze.py hourly via serverless job compute.
+# ============================================================================
+
+resources:
+  jobs:
+    bronze_open_meteo:
+      name: "[${bundle.target}] Bronze - Open-Meteo"
+      description: "Streams open-meteo topic into bronze.open_meteo (availableNow trigger, hourly schedule)."
+
+      schedule:
+        # Hourly at 10 minutes past. Staggered from carbon-intensity (:05)
+        # so multiple Bronze jobs don't pile up at the same minute.
+        quartz_cron_expression: "0 10 * * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: bronze_open_meteo
+          notebook_task:
+            notebook_path: ../../src/bronze/open_meteo_bronze.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              eh_namespace: ${var.eh_namespace}
+              kafka_bootstrap: ${var.kafka_bootstrap}
+              bronze_root: ${var.bronze_root}
+
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true
