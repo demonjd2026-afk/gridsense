@@ -94,6 +94,8 @@ module "container_apps" {
   log_analytics_workspace_id = module.foundation.log_analytics_workspace_id
   eventhubs_namespace_id     = module.eventhubs.namespace_id
   eventhubs_namespace_name   = module.eventhubs.namespace_name
+  key_vault_id               = module.foundation.key_vault_id
+  key_vault_uri              = module.foundation.key_vault_uri
   random_suffix              = module.foundation.random_suffix
 
   producers = {
@@ -108,6 +110,15 @@ module "container_apps" {
       image_tag       = "v1"
       eventhub_topic  = "open-meteo"
       poll_interval_s = 900
+    }
+    "entsoe" = {
+      image_repo      = "entsoe"
+      image_tag       = "v1"
+      eventhub_topic  = "entsoe"
+      poll_interval_s = 3600
+      secrets = {
+        "ENTSOE_API_TOKEN" = "entsoe-api-token"
+      }
     }
   }
 }

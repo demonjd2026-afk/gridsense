@@ -126,6 +126,18 @@ resource "azurerm_container_app" "producer" {
     identity = azurerm_user_assigned_identity.producers.id
   }
 
+  # Dynamic secret block: one entry per (env_var_name, kv_secret_name) pair
+  # in each.value.secrets. The runtime resolves key_vault_secret_id via our
+  # UAMI, so the secret value never appears in Terraform state.
+  dynamic "secret" {
+    for_each = each.value.secrets
+    content {
+      name                = lower(replace(secret.key, "_", "-"))
+      key_vault_secret_id = "${trimsuffix(var.key_vault_uri, "/")}/secrets/${secret.value}"
+      identity            = azurerm_user_assigned_identity.producers.id
+    }
+  }
+
   template {
     min_replicas = each.value.min_replicas
     max_replicas = each.value.max_replicas
@@ -155,6 +167,17 @@ resource "azurerm_container_app" "producer" {
         name  = "AZURE_CLIENT_ID"
         value = azurerm_user_assigned_identity.producers.client_id
       }
+
+      # Dynamic env block: one per secret declared in each.value.secrets.
+      # secret_name references the secret block above by its (lowercased,
+      # underscores-to-hyphens) name.
+      dynamic "env" {
+        for_each = each.value.secrets
+        content {
+          name        = env.key
+          secret_name = lower(replace(env.key, "_", "-"))
+        }
+      }
     }
   }
 
@@ -165,5 +188,18 @@ resource "azurerm_container_app" "producer" {
   depends_on = [
     azurerm_role_assignment.producers_acr_pull,
     azurerm_role_assignment.producers_eventhubs_sender,
+    azurerm_role_assignment.producers_kv_secrets_user,
   ]
+}
+
+# ----------------------------------------------------------------------------
+# Role assignment: UAMI -> Key Vault Secrets User on the vault
+# Required so Container Apps can resolve `keyVaultUrl=...&identity=...` secret
+# references at runtime. Scoped to the entire vault (not per-secret) so adding
+# new secrets later doesn't need additional grants.
+# ----------------------------------------------------------------------------
+resource "azurerm_role_assignment" "producers_kv_secrets_user" {
+  scope                = var.key_vault_id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.producers.principal_id
 }

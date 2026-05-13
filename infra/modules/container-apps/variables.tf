@@ -65,7 +65,21 @@ variable "producers" {
     memory          = optional(string, "0.5Gi")
     min_replicas    = optional(number, 1)
     max_replicas    = optional(number, 1)
+    # Optional Key Vault-backed secrets. Map of env-var-name -> KV secret name.
+    # Each entry creates a secret block on the Container App (resolved at
+    # runtime via the producers UAMI) and exposes it as the named env var.
+    secrets = optional(map(string), {})
   }))
   description = "Map of producer name -> config. Key becomes the Container App name suffix."
   default     = {}
+}
+
+variable "key_vault_id" {
+  type        = string
+  description = "Key Vault resource ID. UAMI gets 'Key Vault Secrets User' on this vault so Container Apps can mount secrets at runtime."
+}
+
+variable "key_vault_uri" {
+  type        = string
+  description = "Key Vault DNS URI (https://...vault.azure.net/) for building secret references."
 }
