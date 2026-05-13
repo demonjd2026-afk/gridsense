@@ -6,22 +6,20 @@ A near-real-time data lakehouse that ingests electricity grid telemetry from 30+
 
 ## Stack
 
-**Streaming ingestion** · **Medallion architecture** · **Delta Live Tables** · **MLflow forecasting** · **GenAI briefing agent** · **Power BI on Fabric DirectLake**
+**Streaming ingestion** · **Medallion architecture** · **Spark Structured Streaming** · **MLflow forecasting** · **GenAI briefing agent** · **Power BI on Fabric DirectLake**
 
 ## Architecture
 
-```
-SOURCES          INGESTION         LAKEHOUSE          SERVE
-UK Carbon API → Event Hubs    →  Bronze (raw)     →  Fabric SQL / DirectLake
-ENTSO-E API     Container Apps   Silver (clean)      Power BI live map
-Open-Meteo      ADF static refs  Gold (star + ML)    GenAI briefings
-```
+See the **[Live status diagram](#live-status-as-built)** below for the as-built data flow.
 
-- **Compute:** Azure Databricks (Premium, job clusters only)
-- **Storage:** ADLS Gen2 + Delta Lake (bronze/silver/gold)
+- **Compute:** Azure Databricks (serverless job compute)
+- **Streaming ingest:** Spark Structured Streaming (Kafka surface of Event Hubs)
+- **Storage:** ADLS Gen2 + Delta Lake (bronze/silver/gold/quarantine schemas)
 - **Governance:** Unity Catalog
+- **Producers:** Python on Azure Container Apps (one per data source)
+- **Secrets:** Azure Key Vault, surfaced via UAMI to Container Apps and via KV-backed secret scope to Databricks
 - **IaC:** Terraform + Databricks Asset Bundles
-- **CI/CD:** GitHub Actions with OIDC federation
+- **CI/CD:** GitHub Actions (planned, Phase 11)
 - **Monitoring:** Azure Monitor + Log Analytics
 
 ## Project status
@@ -30,12 +28,12 @@ Open-Meteo      ADF static refs  Gold (star + ML)    GenAI briefings
 
 | Phase | Status |
 |---|---|
-| 1. Repository & local env | 🟡 In progress |
-| 2. Azure foundation (Terraform) | ⚪ Not started |
-| 3. Databricks workspace config | ⚪ Not started |
-| 4. Data producers (Container Apps) | ⚪ Not started |
-| 5. Bronze layer streaming | ⚪ Not started |
-| 6. Silver layer (DLT) | ⚪ Not started |
+| 1. Repository & local env | ✅ Done |
+| 2. Azure foundation (Terraform) | ✅ Done |
+| 3. Databricks workspace config | ✅ Done |
+| 4. Data producers (Container Apps) | ✅ Done (3 producers live) |
+| 5. Bronze layer streaming | ✅ Done (3 tables, hourly ingest) |
+| 6. Silver layer (cleansing + joins) | ⚪ Next |
 | 7. Gold layer (star schema) | ⚪ Not started |
 | 8. ML forecasting (MLflow) | ⚪ Not started |
 | 9. GenAI briefing agent | ⚪ Not started |
@@ -43,14 +41,62 @@ Open-Meteo      ADF static refs  Gold (star + ML)    GenAI briefings
 | 11. CI/CD (GitHub Actions) | ⚪ Not started |
 | 12. Monitoring & observability | ⚪ Not started |
 
+## Live status (as-built)
+
+Three producers publish to Azure Event Hubs; three Databricks Structured Streaming jobs ingest into Bronze Delta tables on an hourly schedule. All resources provisioned via Terraform, all Databricks code deployed via Asset Bundles.
+
+```mermaid
+flowchart LR
+    A1[UK Carbon<br/>Intensity API] --> P1[ca-carbon-intensity-dev<br/>5 min poll]
+    A2[Open-Meteo<br/>API] --> P2[ca-open-meteo-dev<br/>15 min poll]
+    A3[ENTSO-E<br/>API] --> P3[ca-entsoe-dev<br/>1 hr poll]
+    P1 --> EH[(Event Hubs<br/>3 topics)]
+    P2 --> EH
+    P3 --> EH
+    EH --> B1[bronze.carbon_intensity]
+    EH --> B2[bronze.open_meteo]
+    EH --> B3[bronze.entsoe]
+    B1 --> S[Silver<br/>⏳ Phase 6]
+    B2 --> S
+    B3 --> S
+    S --> G[Gold star schema<br/>⏳ Phase 7]
+    G --> PBI[Power BI<br/>⏳ Phase 10]
+    G --> ML[ML Forecasting<br/>⏳ Phase 8]
+    G --> AI[GenAI Briefing<br/>⏳ Phase 9]
+
+    classDef done fill:#1f6f43,stroke:#2ecc71,color:#fff
+    classDef wip fill:#5c3317,stroke:#f39c12,color:#fff
+    class P1,P2,P3,EH,B1,B2,B3 done
+    class S,G,PBI,ML,AI wip
+```
+
+### What's running right now
+
+| Component | Cadence | Volume |
+|---|---|---|
+| `ca-carbon-intensity-dev` Container App | 5 min poll | ~5,184 msg/day |
+| `ca-open-meteo-dev` Container App | 15 min poll | ~576 msg/day |
+| `ca-entsoe-dev` Container App | 1 hr poll | ~120 msg/day |
+| `bronze_carbon_intensity` Databricks Job | Hourly (cron `0 5 * * * ?`) | reads from `carbon-intensity` topic |
+| `bronze_open_meteo` Databricks Job | Hourly (cron `0 10 * * * ?`) | reads from `open-meteo` topic |
+| `bronze_entsoe` Databricks Job | Hourly (cron `0 15 * * * ?`) | reads from `entsoe` topic |
+
+### Architectural decisions worth flagging
+
+- **Source-named topics, not domain-named.** `open-meteo` topic for the open-meteo producer (not `weather`). Schema and data domain live in the event envelope, not the topic name.
+- **Producer-side: managed identity all the way.** Container Apps authenticate to Event Hubs via UAMI + OAuth bearer (no connection strings, no SAS keys, no secrets).
+- **Consumer-side: Service Principal workaround.** Databricks Spark Kafka client does not natively support managed identity auth as of late 2025; SP + Key Vault is the documented Microsoft pattern. Switch to UC Service Credentials when DBR 16.1+ goes GA.
+- **Secret-management via Azure Key Vault.** Single source of truth: ENTSO-E API token, Databricks SP credentials. Surfaced into Container Apps via the `secrets` block in Terraform and into Databricks via a KV-backed secret scope.
+- **Shared Python package between producers.** `producers/_common/` is installed editable into each producer image at build time; carries the OAuth handler and event envelope code so producer-specific files stay small.
+
 ## Data sources
 
 | Source | Type | Cadence | Purpose |
 |---|---|---|---|
-| UK Carbon Intensity API | REST, no key | 5 min poll | Live carbon intensity, 48h forecast |
-| ENTSO-E Transparency | REST, token | 15 min poll | Generation by fuel type, 30+ countries |
-| Open-Meteo Weather | REST, no key | Hourly | Wind speed, solar irradiance (forecast features) |
-| OpenStreetMap power | Static extract | Once | Power plant locations |
+| UK Carbon Intensity API | REST, no key | 5 min poll | Live carbon intensity (forecast + actual) for 14 UK DNO regions |
+| Open-Meteo Weather | REST, no key | 15 min poll | Wind speed, solar irradiance, temperature, cloud cover for 6 EU cities |
+| ENTSO-E Transparency | REST, token (KV-backed) | 1 hr poll | Actual generation per production type for 6 EU bidding zones |
+| OpenStreetMap power | Static extract | Once (Phase 7) | Power plant locations |
 
 ## Outcomes targeted
 
