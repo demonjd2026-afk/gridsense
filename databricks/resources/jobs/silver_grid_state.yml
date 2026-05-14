@@ -1,0 +1,40 @@
+# ============================================================================
+# Silver Grid State - Asset Bundle Job
+# ----------------------------------------------------------------------------
+# The 3-way join. Joins silver.generation (the spine) + silver.weather (via
+# country_dim) + silver.carbon_intensity (GB only, aggregated to hourly)
+# into silver.grid_state at (country_code, hour_utc) grain.
+#
+# Schedule :45 = after the per-source Silvers (:25/:30/:35) and the
+# country_dim job (:40), so all upstream tables are fresh.
+# ============================================================================
+
+resources:
+  jobs:
+    silver_grid_state:
+      name: "[${bundle.target}] Silver - Grid State"
+      description: "3-way join: generation x weather x UK carbon intensity into silver.grid_state."
+
+      schedule:
+        quartz_cron_expression: "0 45 * * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: silver_grid_state
+          notebook_task:
+            notebook_path: ../../src/silver/grid_state_silver.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true

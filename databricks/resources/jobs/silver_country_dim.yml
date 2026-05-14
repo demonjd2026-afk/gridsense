@@ -1,0 +1,38 @@
+# ============================================================================
+# Silver Country Dim - Asset Bundle Job
+# ----------------------------------------------------------------------------
+# Tiny static-dimension job. Refreshes the country-to-capital mapping table
+# used by silver.grid_state. Cheap to run hourly; could be quarterly.
+# Schedule :40 = after all per-source Silvers (:25/:30/:35) and before
+# silver_grid_state (:45).
+# ============================================================================
+
+resources:
+  jobs:
+    silver_country_dim:
+      name: "[${bundle.target}] Silver - Country Dim"
+      description: "Static country -> capital city mapping for the silver.grid_state join."
+
+      schedule:
+        quartz_cron_expression: "0 40 * * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: silver_country_dim
+          notebook_task:
+            notebook_path: ../../src/silver/country_dim_silver.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 600
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true
