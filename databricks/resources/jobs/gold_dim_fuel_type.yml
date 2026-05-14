@@ -1,0 +1,35 @@
+# ============================================================================
+# Gold dim_fuel_type - Asset Bundle Job
+# Unified fuel taxonomy (ENTSO-E + UK CI) with IPCC AR5 lifecycle carbon.
+# Scheduled at :52.
+# ============================================================================
+
+resources:
+  jobs:
+    gold_dim_fuel_type:
+      name: "[${bundle.target}] Gold - dim_fuel_type"
+      description: "Unified fuel-type dimension with IPCC AR5 lifecycle carbon estimates."
+
+      schedule:
+        quartz_cron_expression: "0 52 * * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: gold_dim_fuel_type
+          notebook_task:
+            notebook_path: ../../src/gold/dim_fuel_type.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 600
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true

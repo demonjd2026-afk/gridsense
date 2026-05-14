@@ -1,0 +1,35 @@
+# ============================================================================
+# Gold dim_country - Asset Bundle Job
+# Static country dimension. Overwrite-each-run, ~6 rows.
+# Scheduled at :50 (after silver_grid_state at :45).
+# ============================================================================
+
+resources:
+  jobs:
+    gold_dim_country:
+      name: "[${bundle.target}] Gold - dim_country"
+      description: "Static country dimension with EIC bidding-zone codes and timezone offsets."
+
+      schedule:
+        quartz_cron_expression: "0 50 * * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: gold_dim_country
+          notebook_task:
+            notebook_path: ../../src/gold/dim_country.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 600
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true
