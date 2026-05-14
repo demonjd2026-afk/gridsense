@@ -33,8 +33,8 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 | 3. Databricks workspace config | ✅ Done |
 | 4. Data producers (Container Apps) | ✅ Done (3 producers live) |
 | 5. Bronze layer streaming | ✅ Done (3 tables, hourly ingest) |
-| 6. Silver layer (cleansing + joins) | ⚪ Next |
-| 7. Gold layer (star schema) | ⚪ Not started |
+| 6. Silver layer (cleansing + joins) | ✅ Done (5 tables incl. grid_state 3-way join) |
+| 7. Gold layer (star schema) | 🟡 In progress (3 dims + 1 fact done; fact_grid_hourly pending) |
 | 8. ML forecasting (MLflow) | ⚪ Not started |
 | 9. GenAI briefing agent | ⚪ Not started |
 | 10. Power BI on Fabric DirectLake | ⚪ Not started |
@@ -43,7 +43,7 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 
 ## Live status (as-built)
 
-Three producers publish to Azure Event Hubs; three Databricks Structured Streaming jobs ingest into Bronze Delta tables on an hourly schedule. All resources provisioned via Terraform, all Databricks code deployed via Asset Bundles.
+Three producers publish to Azure Event Hubs; eleven Databricks jobs cascade hourly (Bronze ingest → Silver parse+join → Gold star schema) into Delta tables in Unity Catalog. All resources provisioned via Terraform, all Databricks code deployed via Asset Bundles.
 
 ```mermaid
 flowchart LR
@@ -56,18 +56,18 @@ flowchart LR
     EH --> B1[bronze.carbon_intensity]
     EH --> B2[bronze.open_meteo]
     EH --> B3[bronze.entsoe]
-    B1 --> S[Silver<br/>⏳ Phase 6]
+    B1 --> S[Silver layer]
     B2 --> S
     B3 --> S
-    S --> G[Gold star schema<br/>⏳ Phase 7]
+    S --> G[Gold star schema<br/>⏳ Phase 7.B]
     G --> PBI[Power BI<br/>⏳ Phase 10]
     G --> ML[ML Forecasting<br/>⏳ Phase 8]
     G --> AI[GenAI Briefing<br/>⏳ Phase 9]
 
     classDef done fill:#1f6f43,stroke:#2ecc71,color:#fff
     classDef wip fill:#5c3317,stroke:#f39c12,color:#fff
-    class P1,P2,P3,EH,B1,B2,B3 done
-    class S,G,PBI,ML,AI wip
+    class P1,P2,P3,EH,B1,B2,B3,S done
+    class G,PBI,ML,AI wip
 ```
 
 ### What's running right now
@@ -80,6 +80,15 @@ flowchart LR
 | `bronze_carbon_intensity` Databricks Job | Hourly (cron `0 5 * * * ?`) | reads from `carbon-intensity` topic |
 | `bronze_open_meteo` Databricks Job | Hourly (cron `0 10 * * * ?`) | reads from `open-meteo` topic |
 | `bronze_entsoe` Databricks Job | Hourly (cron `0 15 * * * ?`) | reads from `entsoe` topic |
+| `silver_carbon_intensity` Databricks Job | Hourly at :25 | parse + dedup + MERGE into `silver.carbon_intensity` |
+| `silver_open_meteo` Databricks Job | Hourly at :30 | parse + dedup + MERGE into `silver.weather` |
+| `silver_entsoe` Databricks Job | Hourly at :35 | parse + dedup + MERGE into `silver.generation` |
+| `silver_country_dim` Databricks Job | Hourly at :40 | static 6-row country to capital mapping |
+| `silver_grid_state` Databricks Job | Hourly at :45 | 4-way join into `silver.grid_state` (the interview-worthy artifact) |
+| `gold_dim_country` Databricks Job | Hourly at :50 | static dim with EIC + timezone offsets |
+| `gold_dim_fuel_type` Databricks Job | Hourly at :52 | unified fuel taxonomy + IPCC AR5 lifecycle carbon |
+| `gold_dim_time` Databricks Job | Hourly at :55 | 17,521-row hourly dim (2026-2028 UTC) |
+| `gold_fact_generation_fuel_hourly` Databricks Job | Hourly at :57 | star-schema fact: country x hour x fuel |
 
 ### Architectural decisions worth flagging
 
@@ -88,6 +97,8 @@ flowchart LR
 - **Consumer-side: Service Principal workaround.** Databricks Spark Kafka client does not natively support managed identity auth as of late 2025; SP + Key Vault is the documented Microsoft pattern. Switch to UC Service Credentials when DBR 16.1+ goes GA.
 - **Secret-management via Azure Key Vault.** Single source of truth: ENTSO-E API token, Databricks SP credentials. Surfaced into Container Apps via the `secrets` block in Terraform and into Databricks via a KV-backed secret scope.
 - **Shared Python package between producers.** `producers/_common/` is installed editable into each producer image at build time; carries the OAuth handler and event envelope code so producer-specific files stay small.
+- **MERGE-with-dedup, not append-only, in Silver.** Producers publish each natural key many times (forecast then actual, retries, TSO corrections). Silver dedupes the source DataFrame via `ROW_NUMBER() OVER (PARTITION BY natural_key ORDER BY ingested_at DESC)` before MERGE; this both fixes Delta's `DELTA_MULTIPLE_SOURCE_ROW_MATCHING_TARGET_ROW_IN_MERGE` error and gives latest-wins semantics.
+- **Unified fuel taxonomy across two upstream sources.** `gold.dim_fuel_type` maps ENTSO-E PsrType codes (B01–B25) and UK Carbon Intensity plain labels (`nuclear`, `solar`, `wind`...) to a single `fuel_key`, with `is_renewable`, `is_low_carbon`, and IPCC AR5 lifecycle `typical_gco2_per_kwh`. Downstream "renewable share for FR last hour" becomes one star join, not a `CASE WHEN` ladder.
 
 ## Data sources
 
