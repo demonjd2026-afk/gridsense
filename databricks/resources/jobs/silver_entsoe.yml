@@ -1,0 +1,35 @@
+# ============================================================================
+# Silver ENTSO-E - Asset Bundle Job
+# Reads bronze.entsoe, parses + validates + MERGEs into silver.generation.
+# Scheduled at :35 (20 min after Bronze :15).
+# ============================================================================
+
+resources:
+  jobs:
+    silver_entsoe:
+      name: "[${bundle.target}] Silver - ENTSO-E"
+      description: "Parse + validate + MERGE Bronze envelopes into silver.generation. Malformed rows -> quarantine."
+
+      schedule:
+        quartz_cron_expression: "0 35 * * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: silver_entsoe
+          notebook_task:
+            notebook_path: ../../src/silver/entsoe_silver.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true

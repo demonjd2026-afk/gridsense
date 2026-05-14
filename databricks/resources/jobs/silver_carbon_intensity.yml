@@ -1,0 +1,38 @@
+# ============================================================================
+# Silver Carbon Intensity - Asset Bundle Job
+# ----------------------------------------------------------------------------
+# Reads bronze.carbon_intensity, parses + validates + MERGEs into
+# silver.carbon_intensity. Malformed rows append to quarantine.carbon_intensity.
+# Scheduled at :25 past the hour - 20 min after Bronze (:05) so we read
+# fresh Bronze data each cycle.
+# ============================================================================
+
+resources:
+  jobs:
+    silver_carbon_intensity:
+      name: "[${bundle.target}] Silver - Carbon Intensity"
+      description: "Parse + validate + MERGE Bronze envelopes into silver.carbon_intensity. Malformed rows -> quarantine."
+
+      schedule:
+        quartz_cron_expression: "0 25 * * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: silver_carbon_intensity
+          notebook_task:
+            notebook_path: ../../src/silver/carbon_intensity_silver.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true

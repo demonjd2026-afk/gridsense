@@ -119,26 +119,47 @@ async def fetch_city(
 def first_hour_snapshot(api_response: dict[str, Any], city: str) -> dict[str, Any]:
     """Reduce an Open-Meteo hourly response to a single point-in-time payload.
 
-    The response has parallel arrays under `hourly`: time[], temperature_2m[],
-    etc. We take index 0 (current hour) and flatten to a single dict.
+    The hourly response contains parallel arrays under `hourly`: time[],
+    temperature_2m[], etc. With forecast_days=1 the response covers 24 hours
+    starting at today\'s UTC midnight, so times[0] is "today 00:00 UTC".
+
+    We want the **current** hour, not the start of the day. We pick the index
+    whose timestamp is the latest one <= now_utc. This way the producer
+    publishes a meaningful "now" snapshot regardless of when it polls.
     """
+    from datetime import UTC, datetime
+
     hourly = api_response.get("hourly", {})
     times = hourly.get("time", [])
     if not times:
         # Defensive: should never happen on a 200 response, but if Open-Meteo
-        # ever returns an empty array we don't want to crash the producer.
+        # ever returns an empty array we don\'t want to crash the producer.
         raise ValueError(f"empty hourly forecast for {city}")
+
+    # Find the index of the current hour. Open-Meteo emits "yyyy-MM-ddTHH:mm"
+    # strings (no tz; documented UTC since we passed timezone=UTC).
+    now_iso_hour = datetime.now(UTC).strftime("%Y-%m-%dT%H:00")
+    try:
+        idx = times.index(now_iso_hour)
+    except ValueError:
+        # If for some reason the current hour is not in the array (clock skew,
+        # API just rolled over) fall back to the latest available index that
+        # is <= now. This is safer than failing.
+        idx = max(
+            (i for i, t in enumerate(times) if t <= now_iso_hour),
+            default=0,
+        )
 
     return {
         "city": city,
         "latitude": api_response.get("latitude"),
         "longitude": api_response.get("longitude"),
         "elevation": api_response.get("elevation"),
-        "time": times[0],
-        "temperature_2m": hourly.get("temperature_2m", [None])[0],
-        "wind_speed_10m": hourly.get("wind_speed_10m", [None])[0],
-        "cloud_cover": hourly.get("cloud_cover", [None])[0],
-        "shortwave_radiation": hourly.get("shortwave_radiation", [None])[0],
+        "time": times[idx],
+        "temperature_2m": hourly.get("temperature_2m", [None])[idx],
+        "wind_speed_10m": hourly.get("wind_speed_10m", [None])[idx],
+        "cloud_cover": hourly.get("cloud_cover", [None])[idx],
+        "shortwave_radiation": hourly.get("shortwave_radiation", [None])[idx],
         "units": {
             "temperature_2m": api_response.get("hourly_units", {}).get("temperature_2m"),
             "wind_speed_10m": api_response.get("hourly_units", {}).get("wind_speed_10m"),

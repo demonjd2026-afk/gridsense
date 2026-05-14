@@ -29,10 +29,13 @@ SAMPLE_RESPONSE = {
 
 
 def test_first_hour_snapshot_shape() -> None:
+    # first_hour_snapshot picks the latest time <= now_utc. The SAMPLE_RESPONSE
+    # uses 2026-05-13 timestamps, both of which are in the past when this test
+    # runs, so it picks the largest matching index (the 09:00 row).
     snap = first_hour_snapshot(SAMPLE_RESPONSE, "London")
     assert snap["city"] == "London"
-    assert snap["time"] == "2026-05-13T08:00"
-    assert snap["temperature_2m"] == 12.4
+    assert snap["time"] == "2026-05-13T09:00"
+    assert snap["temperature_2m"] == 13.1  # row at index 1, not index 0
     assert snap["units"]["wind_speed_10m"] == "km/h"
 
 

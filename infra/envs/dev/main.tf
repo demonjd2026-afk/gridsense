@@ -119,7 +119,7 @@ module "container_apps" {
     }
     "open-meteo" = {
       image_repo      = "open-meteo"
-      image_tag       = "v1"
+      image_tag       = "v2"
       eventhub_topic  = "open-meteo"
       poll_interval_s = 900
     }
