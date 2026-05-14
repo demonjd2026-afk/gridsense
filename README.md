@@ -150,7 +150,7 @@ make azure-whoami      # show current Azure CLI account
 
 ## Documentation
 
-- [Architecture deep-dive](docs/architecture.md) — *(coming in Phase 2)*
+- [Architecture deep-dive](docs/architecture.md) — implementation log with per-phase design decisions, issues, and resolutions
 - [Operational runbook](docs/runbook.md) — *(coming in Phase 12)*
 
 ## License
