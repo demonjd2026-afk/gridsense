@@ -21,7 +21,7 @@ resources:
         # cleaner if you're correlating producer and consumer activity).
         quartz_cron_expression: "0 5 * * * ?"
         timezone_id: "UTC"
-        pause_status: UNPAUSED
+        pause_status: PAUSED
 
       max_concurrent_runs: 1   # one stream at a time; checkpoint serializes anyway
 

@@ -316,4 +316,45 @@ Pre-commit hooks (ruff, ruff-format, terraform fmt, terraform validate, secret d
 
 ---
 
-*Last updated: 2026-05-15 after Phase 7.B. See commit log for change history.*
+## FinOps decisions
+
+A portfolio project is judged on architectural choices *and* on operational discipline. This section records cost-management decisions that are not part of any single phase but materially shape how the project runs.
+
+### Pause-during-accumulation pattern (2026-05-15)
+
+**Context.** A 5-day Azure cost review surfaced ~₹4,600 in Databricks DBU charges — 90% of total project burn (~₹5,120 across May 10–15). The producers, NAT Gateway, Event Hubs, storage, and Container Registry combined to under ₹500.
+
+**Diagnosis.** 14 hourly scheduled jobs running on Premium-tier serverless compute. Each job processes modest volume (2–3K rows hourly) in 30–60 seconds. The per-run cost is small; the cumulative effect of 14 × 24 × 7 = 2,352 runs/week at Premium serverless DBU rates is not.
+
+**Decision.** Pause all 14 job schedules. Keep the 3 Container App producers running so Bronze keeps accumulating real data continuously. Process the backlog on-demand via manual job runs when downstream work needs fresh data.
+
+The architecture supports this cleanly:
+
+- *Bronze* is append-only, so producer writes never need a job-side consumer to catch up.
+- *Silver* uses MERGE with latest-wins dedup on natural keys — re-running after a 2-week gap processes the entire Bronze backlog idempotently in one pass.
+- *Gold* facts use the same MERGE-with-dedup pattern (`common.py:merge_into_silver`), so a single manual run after the Silver catch-up rebuilds Gold to current state.
+
+**Manual-run pattern during paused window:**
+
+```bash
+# Run the chain manually when you need fresh Gold for a screenshot or notebook
+databricks bundle run bronze_carbon_intensity -t dev
+databricks bundle run bronze_entsoe -t dev
+databricks bundle run bronze_open_meteo -t dev
+databricks bundle run silver_carbon_intensity -t dev   # and other silver_*
+databricks bundle run gold_fact_carbon_intensity_30min -t dev   # and other gold_*
+```
+
+**Estimated impact.** ~₹925/day saved (extrapolating from the 5-day baseline). Producer burn of ~₹72/day continues — an intentional cost to preserve the continuous-data narrative for Phase 8 (ML model training on ≥2 weeks of real ingestion) and for the portfolio claim that this is a live, always-on lakehouse.
+
+**Unpause triggers.**
+
+- Phase 8 model training needs continuously refreshed Gold during the training window
+- Phase 10 demo prep where live data freshness is a visible part of the demo
+- Production cutover (i.e., this is not a portfolio project anymore)
+
+**What this demonstrates beyond the technical work.** A live production data platform without cost controls is not a finished product. Recognizing where 90% of the spend goes, finding the lowest-disruption way to halt it, and designing the pause to be reversible without data loss — that's the FinOps muscle hiring managers look for as much as the medallion architecture itself.
+
+---
+
+*Last updated: 2026-05-15 after Phase 7.B and FinOps pause decision. See commit log for change history.*

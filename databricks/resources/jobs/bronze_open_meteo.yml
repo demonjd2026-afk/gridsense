@@ -14,7 +14,7 @@ resources:
         # so multiple Bronze jobs don't pile up at the same minute.
         quartz_cron_expression: "0 10 * * * ?"
         timezone_id: "UTC"
-        pause_status: UNPAUSED
+        pause_status: PAUSED
 
       max_concurrent_runs: 1
 
