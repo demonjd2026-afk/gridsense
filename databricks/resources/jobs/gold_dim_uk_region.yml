@@ -1,0 +1,37 @@
+# ============================================================================
+# Gold dim_uk_region - Asset Bundle Job
+# ----------------------------------------------------------------------------
+# Static dim: 18 UK regions (14 DNO + 4 national rollups) from the UK Carbon
+# Intensity API. Required by fact_carbon_intensity_30min.
+# Schedule :53 = between other dims (:50/:52/:55) and before the fact (:59).
+# ============================================================================
+
+resources:
+  jobs:
+    gold_dim_uk_region:
+      name: "[${bundle.target}] Gold - dim_uk_region"
+      description: "UK DNO regions + national rollups for carbon intensity fact."
+
+      schedule:
+        quartz_cron_expression: "0 53 * * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: gold_dim_uk_region
+          notebook_task:
+            notebook_path: ../../src/gold/dim_uk_region.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true

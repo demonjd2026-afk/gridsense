@@ -43,7 +43,7 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 
 ## Live status (as-built)
 
-Three producers publish to Azure Event Hubs; eleven Databricks jobs cascade hourly (Bronze ingest → Silver parse+join → Gold star schema) into Delta tables in Unity Catalog. All resources provisioned via Terraform, all Databricks code deployed via Asset Bundles.
+Three producers publish to Azure Event Hubs; thirteen Databricks jobs cascade hourly (Bronze ingest → Silver parse+join → Gold star schema) into Delta tables in Unity Catalog. The Gold layer is a two-fact star schema: a fuel-mix fact at hourly grain across 6 countries, and a carbon-intensity fact at 30-min grain across 18 UK regions. All resources provisioned via Terraform, all Databricks code deployed via Asset Bundles.
 
 ```mermaid
 flowchart LR
@@ -59,15 +59,15 @@ flowchart LR
     B1 --> S[Silver layer]
     B2 --> S
     B3 --> S
-    S --> G[Gold star schema<br/>⏳ Phase 7.B]
+    S --> G[Gold star schema<br/>✅ Phase 7]
     G --> PBI[Power BI<br/>⏳ Phase 10]
     G --> ML[ML Forecasting<br/>⏳ Phase 8]
     G --> AI[GenAI Briefing<br/>⏳ Phase 9]
 
     classDef done fill:#1f6f43,stroke:#2ecc71,color:#fff
     classDef wip fill:#5c3317,stroke:#f39c12,color:#fff
-    class P1,P2,P3,EH,B1,B2,B3,S done
-    class G,PBI,ML,AI wip
+    class P1,P2,P3,EH,B1,B2,B3,S,G done
+    class PBI,ML,AI wip
 ```
 
 ### What's running right now
@@ -89,6 +89,8 @@ flowchart LR
 | `gold_dim_fuel_type` Databricks Job | Hourly at :52 | unified fuel taxonomy + IPCC AR5 lifecycle carbon |
 | `gold_dim_time` Databricks Job | Hourly at :55 | 17,521-row hourly dim (2026-2028 UTC) |
 | `gold_fact_generation_fuel_hourly` Databricks Job | Hourly at :57 | star-schema fact: country x hour x fuel |
+| `gold_dim_uk_region` Databricks Job | Hourly at :53 | static dim: 14 UK DNO regions + 4 national rollups |
+| `gold_fact_carbon_intensity_30min` Databricks Job | Hourly at :59 | star-schema fact: UK region x 30-min interval (forecast + actual) |
 
 ### Architectural decisions worth flagging
 
@@ -99,6 +101,7 @@ flowchart LR
 - **Shared Python package between producers.** `producers/_common/` is installed editable into each producer image at build time; carries the OAuth handler and event envelope code so producer-specific files stay small.
 - **MERGE-with-dedup, not append-only, in Silver.** Producers publish each natural key many times (forecast then actual, retries, TSO corrections). Silver dedupes the source DataFrame via `ROW_NUMBER() OVER (PARTITION BY natural_key ORDER BY ingested_at DESC)` before MERGE; this both fixes Delta's `DELTA_MULTIPLE_SOURCE_ROW_MATCHING_TARGET_ROW_IN_MERGE` error and gives latest-wins semantics.
 - **Unified fuel taxonomy across two upstream sources.** `gold.dim_fuel_type` maps ENTSO-E PsrType codes (B01–B25) and UK Carbon Intensity plain labels (`nuclear`, `solar`, `wind`...) to a single `fuel_key`, with `is_renewable`, `is_low_carbon`, and IPCC AR5 lifecycle `typical_gco2_per_kwh`. Downstream "renewable share for FR last hour" becomes one star join, not a `CASE WHEN` ladder.
+- **Two facts at different grains, not one merged fact.** `fact_generation_fuel_hourly` (country × hour × fuel) and `fact_carbon_intensity_30min` (UK region × 30-min) answer complementary questions: lifecycle CO₂ from typical fuel-mix averages vs. live measured grid intensity. Merging them into one OBT would force a grain compromise; keeping them separate lets each be queried at its natural grain and joined when needed.
 
 ## Data sources
 

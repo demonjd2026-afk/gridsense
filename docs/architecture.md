@@ -192,33 +192,47 @@ Each reads Bronze in batch (not streaming — MERGE semantics need batch), parse
 
 **What was built (7.A)**
 
-The Gold layer is in progress. 7.A shipped three dimensions and one fact table:
+Phase 7.A shipped three dimensions and one fact table:
 
 - `gold.dim_country` (6 rows, static) — extends `silver.country_dim` with EIC bidding-zone codes, ISO alpha-3 codes, and winter/summer timezone offsets
 - `gold.dim_fuel_type` (29 rows, static) — unifies ENTSO-E PsrType codes (`B01`-`B25`) and UK Carbon Intensity plain labels (`nuclear`, `solar`, `wind`...) into a single `fuel_key`, with `is_renewable`, `is_low_carbon`, and IPCC AR5 lifecycle `typical_gco2_per_kwh`
 - `gold.dim_time` (17,521 rows, generated) — hourly grain, 2026-01-01 to 2028-01-01 UTC. Carries year/quarter/month/week/day/hour numerics, `is_weekend`, `is_business_hour_uk`, `is_daytime_approx`, and a `yyyyMMddHH` integer `time_key` for cheap fact joins
-- `gold.fact_generation_fuel_hourly` (1,628 rows at last check) — explodes `silver.generation.generation_mix` into one row per (country, hour, fuel). Joins to all 3 dims via surrogate keys. Computes `estimated_gco2_per_hour = value_mw × typical_gco2_per_kwh`
+- `gold.fact_generation_fuel_hourly` (2,070 rows at Phase 7.B close, growing hourly) — explodes `silver.generation.generation_mix` into one row per (country, hour, fuel). Joins to all 3 dims via surrogate keys. Computes `estimated_gco2_per_hour = value_mw × typical_gco2_per_kwh`
 
-**Pending (7.B)**
+**What was built (7.B)**
 
-`gold.fact_grid_hourly` — wide fact from `silver.grid_state`, one row per (country, hour). Deferred to the next session because weather data is currently sparse (open-meteo v2 producer started recently); waiting for ~24 hours of dense data so the screenshot tells a strong story.
+Phase 7.B was originally scoped as `fact_grid_hourly` (a wide fact joining weather and generation). On opening 7.B, a Silver-table inspection showed that `silver.carbon_intensity` had been quietly accumulating ~2,000 rich rows across 18 UK regions at 30-min grain — measurably more demoable than a wide fact built on still-sparse weather. The scope pivoted accordingly. `fact_grid_hourly` slides to a later phase when weather density justifies it.
+
+7.B shipped one dimension and one fact:
+
+- `gold.dim_uk_region` (18 rows, static) — 14 GB DNO regions plus 4 national rollups (England, Scotland, Wales, GB) from the UK Carbon Intensity API. Carries `region_type` ("DNO" vs "national") and approximate lat/lon for Phase 10 Power BI maps. Rolls up to `dim_country` via `country_code = "GB"`.
+- `gold.fact_carbon_intensity_30min` (2,070 rows at close) — UK carbon intensity at 30-min settlement-period grain. One row per (region_id, period_start). Carries `intensity_forecast` (always populated), `intensity_actual` (nullable; backfilled in a later phase), `source_type` discriminator, pre-computed `forecast_minus_actual` for Phase 8 model evaluation, and a denormalized `generation_mix` array.
+
+**Pending (7.C — later phase)**
+
+`gold.fact_grid_hourly` — wide fact from `silver.grid_state`, one row per (country, hour). Deferred until Open-Meteo weather data accumulates ~7 days of density across all 6 countries.
 
 **Key design decisions**
 
 - *Unified fuel taxonomy in `dim_fuel_type` is the payoff dim.* Without it, "what was the renewable share for FR last hour?" is a `CASE WHEN` ladder over PsrType strings. With it, that question is a one-line `WHERE is_renewable = true` filter. This is the dim that makes the rest of the schema worth its weight.
 - *IPCC AR5 lifecycle carbon estimates as a static column.* `typical_gco2_per_kwh` is a hand-curated column sourced from IPCC AR5 WG3 Annex III (lifecycle medians: coal 820, gas 490, nuclear 12, solar 48, wind 11 gCO2-eq/kWh). It complements live grid carbon intensity from `silver.carbon_intensity` (which captures actual mix at a moment) by enabling "what's the typical emission profile of this country's fuel mix" without needing live carbon data for non-UK countries.
-- *Two fact tables, not one.* `fact_grid_hourly` is wide (1 row per country×hour, many measurements). `fact_generation_fuel_hourly` is tall (many rows per country×hour, 1 measurement per fuel). Tall facts are better for fuel-level analytics; wide facts are better for hour-level dashboards. Building both makes downstream Power BI queries trivial in either direction.
-- *Inner join to `dim_fuel_type`, not left.* If an upstream PsrType is missing from `dim_fuel_type`, that's a real data-quality issue we want to FAIL LOUDLY. A LEFT join with NULL fuel_key would silently produce broken rows.
+- *Two facts at different grains, not one merged fact.* `fact_generation_fuel_hourly` (country × hour × fuel, lifecycle CO₂) and `fact_carbon_intensity_30min` (UK region × 30-min, measured CO₂) answer complementary questions. Merging them into one OBT would force a grain compromise; keeping them separate lets each be queried at its natural grain and joined when needed.
+- *Separate `dim_uk_region` rather than extending `dim_country`.* UK carbon intensity publishes per-DNO-region (London at 18:00 can be 189 gCO₂/kWh while South Scotland is 0) — a granularity `dim_country` cannot represent without breaking the one-row-per-country invariant. `dim_uk_region` joins to `dim_country` via `country_code` so country-level rollup still works in a single hop.
+- *Inner join to dimensions, not left.* If an upstream PsrType or `region_id` is missing from its dim, that's a real data-quality issue we want to FAIL LOUDLY. A LEFT join with NULL would silently produce broken rows.
+- *`source_type` discriminator instead of separate forecast/actual tables.* The UK API emits each period twice — first as forecast (`intensity_actual = null`), later as actual. One fact with a `source_type` column ("forecast" | "actual") and a pre-computed `forecast_minus_actual` measure means Phase 8's ML model can evaluate forecast accuracy without a join. Two tables would have required UNION-or-join logic everywhere downstream.
+- *`time_key` deliberately hourly even for the 30-min fact.* `fact_carbon_intensity_30min` has two rows per `time_key`, distinguished by a `half_hour` column (0 or 30). `GROUP BY time_key` becomes the natural hourly rollup for BI; the denormalized `period_start` timestamp on the fact handles direct 30-min queries without a time-dim join. Avoids maintaining a parallel `dim_time_15min` that would duplicate 95% of `dim_time`'s columns.
 - *`dim_time` sized to actual data window + 20-month forward.* Not 10 years. Larger ranges send a misleading signal about data availability. 2026-01-01 to 2028-01-01 honestly reflects: a few months before producers came online, 20 months of forward horizon for ML.
 
 **Issues hit and resolutions**
 
-Phase 7.A shipped with zero bugs. The patterns established in Silver (alias DataFrames, dedup before MERGE, common.py helpers) composed cleanly into Gold without modification. This is the strongest evidence in the project that the architecture is paying off.
+Phase 7.A shipped with zero bugs. Phase 7.B shipped with zero bugs in the build itself. The patterns established in Silver (alias DataFrames, dedup before MERGE, common.py helpers) composed cleanly into Gold without modification. This is the strongest evidence in the project that the architecture is paying off.
 
-The one "no-op" decision worth noting: I deferred `fact_grid_hourly` to next session because today's weather data was too sparse for a strong screenshot, *not* because the code was hard. Building it today would have been a 2-touch commit (build today, re-screenshot tomorrow); building it tomorrow is one clean commit.
+Two judgment calls during 7.B worth recording, neither a bug:
+
+1. *Initial ad-hoc table creation in the wrong workspace abstraction.* The 7.B dim and fact were first created via the SQL editor with unqualified table names (`gold.dim_uk_region` instead of `${catalog}.gold.dim_uk_region`). They happened to land in the right catalog because `dbw_gridsense_dev` is the workspace default, but this is fragile across targets. Resolution: dropped the SQL-editor tables, rebuilt via the Asset Bundle with the standard catalog-widget pattern matching every other Gold notebook. The bundle is now the single source of truth.
+2. *Mid-phase scope pivot.* Started 7.B intending to build `fact_grid_hourly`; switched to `fact_carbon_intensity_30min` after `SHOW TABLES IN silver` revealed `silver.carbon_intensity` had richer ready-to-use data. The pivot cost ~30 minutes of design re-thinking and produced a substantially stronger demo (the UK regional intensity spread — South Wales at 365 gCO₂/kWh while Scotland sits at 0 — is the single most striking query result in the project so far). Recorded here because portfolio-honesty matters: shipping the right thing late is better than shipping the planned thing on schedule.
 
 ---
-
 ## 4. Cross-cutting concerns
 
 ### 4.1 Authentication architecture
@@ -302,4 +316,4 @@ Pre-commit hooks (ruff, ruff-format, terraform fmt, terraform validate, secret d
 
 ---
 
-*Last updated: 2026-05-14 after Phase 7.A. See commit log for change history.*
+*Last updated: 2026-05-15 after Phase 7.B. See commit log for change history.*
