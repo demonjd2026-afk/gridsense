@@ -1,0 +1,48 @@
+# ============================================================================
+# Backfill job: UK Carbon Intensity historical data → Bronze
+# ----------------------------------------------------------------------------
+# One-shot batch job. Schedule is PAUSED — we don't want this firing
+# accidentally. Manual run only:
+#   databricks bundle run backfill_carbon_intensity -t dev
+#
+# Default parameters: 3 years back to today, 14-day chunks.
+# Override with --params if needed.
+# ============================================================================
+
+resources:
+  jobs:
+    backfill_carbon_intensity:
+      name: "[${bundle.target}] Backfill - UK Carbon Intensity"
+      description: "One-shot historical backfill of UK Carbon Intensity API to bronze.carbon_intensity. Manual run only."
+
+      schedule:
+        quartz_cron_expression: "0 0 0 1 1 ? 2099"   # never fires (sentinel)
+        timezone_id: "UTC"
+        pause_status: PAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: backfill_carbon_intensity
+          notebook_task:
+            notebook_path: ../../src/backfill/backfill_carbon_intensity.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              start_date: "2023-05-17"
+              end_date: "2026-05-17"
+              chunk_days: "7"
+              dry_run: "false"
+
+          max_retries: 0       # backfill is idempotent at append level but
+                               # we don't want auto-retries thundering the API
+          timeout_seconds: 3600
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true
+
+      tags:
+        layer: bronze
+        kind: backfill
+        phase: "8.A"
