@@ -155,13 +155,19 @@ if user_input:
         st.markdown(answer)
         st.session_state.messages.append({"role": "assistant", "content": answer})
 
-        # Show tool calls in expandable section
+        # Show data sources used in a quiet footer (transparency without noise)
         if tool_log:
-            with st.expander(f"🔧 {len(tool_log)} tool call(s)"):
+            n = len(tool_log)
+            label = f"Show data source{'s' if n != 1 else ''} used ({n})"
+            with st.expander(label, expanded=False):
+                lines = []
                 for call in tool_log:
-                    st.code(
-                        f"{call['name']}({call['args']}) → "
-                        f"{call.get('rows', 0)} rows"
-                        + (f"\n  error: {call['error']}" if "error" in call else ""),
-                        language="python",
+                    args_str = ", ".join(f"{k}={v!r}" for k, v in call["args"].items())
+                    line = (
+                        f"`{call['name']}({args_str})` returned "
+                        f"**{call.get('rows', 0)} row{'s' if call.get('rows', 0) != 1 else ''}**"
                     )
+                    if "error" in call:
+                        line += f" — error: {call['error']}"
+                    lines.append(line)
+                st.caption("  \n".join(lines))
