@@ -6,7 +6,10 @@
 
 A near-real-time data lakehouse that ingests electricity grid telemetry from 30+ European sources, computes live carbon intensity, forecasts the next 24 hours of grid cleanliness using machine learning, and generates carbon-aware workload scheduling recommendations through a GenAI agent.
 
+**Live demo:** [gridsense-carbon.streamlit.app](https://gridsense-carbon.streamlit.app) — ask the GenAI agent live questions about EU/UK grid carbon intensity.
+
 ## Stack
+- **GenAI agent layer (Phase 9):** Streamlit Community Cloud + Azure OpenAI (`gpt-4.1-mini` in `swedencentral`) + OpenAI tool calling over 5 hand-written SQL tools against the Gold facts. Live at [gridsense-carbon.streamlit.app](https://gridsense-carbon.streamlit.app).
 
 **Streaming ingestion** · **Medallion architecture** · **Spark Structured Streaming** · **MLflow forecasting** · **GenAI briefing agent** · **Databricks AI/BI dashboards**
 
@@ -38,7 +41,7 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 | 6. Silver layer (cleansing + joins) | ✅ Done (5 tables incl. grid_state 3-way join) |
 | 7. Gold layer (star schema) | ✅ Done (4 dims + 3 facts; integrated fact_grid_hourly is the Phase 8 ML training table) |
 | 8. ML forecasting (MLflow) | ⚪ Not started |
-| 9. GenAI briefing agent | ⚪ Not started |
+| 9. GenAI agent | ✅ Done ([Live demo](https://gridsense-carbon.streamlit.app)) |
 | 10. Dashboards (Databricks AI/BI) | ✅ Done — 3 dashboards, see [docs/PHASE10.md](docs/PHASE10.md) |
 | 11. CI/CD (GitHub Actions) | ✅ Done — Terraform + Bundle deploy via OIDC federation, no client secrets ([docs/PHASE11.md](docs/PHASE11.md)) |
 | 12. Monitoring & observability | ⚪ Not started |
