@@ -34,7 +34,7 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 | 4. Data producers (Container Apps) | ✅ Done (3 producers live) |
 | 5. Bronze layer streaming | ✅ Done (3 tables, hourly ingest) |
 | 6. Silver layer (cleansing + joins) | ✅ Done (5 tables incl. grid_state 3-way join) |
-| 7. Gold layer (star schema) | ✅ Done (4 dims + 2 facts; fact_grid_hourly deferred to 7.C) |
+| 7. Gold layer (star schema) | ✅ Done (4 dims + 2 facts; 7.C unit-fix shipped; fact_grid_hourly pending dense weather data) |
 | 8. ML forecasting (MLflow) | ⚪ Not started |
 | 9. GenAI briefing agent | ⚪ Not started |
 | 10. Dashboards (Databricks AI/BI) | ✅ Done — 3 dashboards, see [docs/PHASE10.md](docs/PHASE10.md) |

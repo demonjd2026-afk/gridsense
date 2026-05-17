@@ -409,15 +409,18 @@ queries live in git and are reviewable without opening the Databricks UI.
 
 ### Follow-ups added by Phase 10
 
-- **fact_generation_fuel_hourly unit bug.** The column
-  `estimated_gco2_per_hour` is computed as `value_mw × typical_gco2_per_kwh`
-  but should be `value_mw × 1000 × typical_gco2_per_kwh` (MW → MWh × 1000
-  kWh/MWh × g/kWh). All three Dashboard 2 datasets compensate at the dataset
-  level (`× 1000` in the tons math). Source fix belongs in
-  `databricks/src/gold/fact_generation_fuel_hourly.py` and is deferred to
-  Phase 7.C. After the fix, remove the workaround from
-  `eu_fuel_mix_latest_hour.sql`, `eu_kpis_latest_hour.sql`, and
-  `eu_co2_24h_per_country.sql`.
+- **fact_generation_fuel_hourly unit bug. ✅ Resolved 2026-05-17 (commit 1b93029).**
+  The column `estimated_gco2_per_hour` was computed as
+  `value_mw × typical_gco2_per_kwh` but should have been
+  `value_mw × 1000 × typical_gco2_per_kwh` (MW → MWh × 1000 kWh/MWh × g/kWh).
+  Fixed at source in `databricks/src/gold/fact_generation_fuel_hourly.py`,
+  re-ran `gold_fact_generation_fuel_hourly` to rewrite all rows in place,
+  and removed the matching `× 1000` workaround from all three Dashboard 2
+  dataset SQL files. Verified: KPI tiles still display the same headline
+  numbers (25,037 tCO₂/hr; 184 gCO₂/kWh) before and after, confirming the
+  fact-table math now matches what the workaround was computing. The
+  notebook's verify SQL was also corrected (`total_gigatons_co2_eq / 1e9`
+  → `total_megatons_co2_eq / 1e12`, which was wrong on multiple counts).
 
 - **Resume schedules before final demo.** Dashboard 3's freshness widget
   reads "stale" / "very stale" while the FinOps pause is active. This is
