@@ -21,8 +21,8 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 - **Producers:** Python on Azure Container Apps (one per data source)
 - **Secrets:** Azure Key Vault, surfaced via UAMI to Container Apps and via KV-backed secret scope to Databricks
 - **IaC:** Terraform + Databricks Asset Bundles
-- **CI/CD:** GitHub Actions (planned, Phase 11)
-- **Monitoring:** Azure Monitor + Log Analytics
+- **CI/CD:** GitHub Actions with OIDC federation (no client secrets); Terraform + Databricks Asset Bundles deploy on push to main
+- **Monitoring:** Azure Monitor + Log Analytics (planned, Phase 12)
 
 ## Project status
 
