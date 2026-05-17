@@ -355,6 +355,83 @@ databricks bundle run gold_fact_carbon_intensity_30min -t dev   # and other gold
 
 **What this demonstrates beyond the technical work.** A live production data platform without cost controls is not a finished product. Recognizing where 90% of the spend goes, finding the lowest-disruption way to halt it, and designing the pause to be reversible without data loss — that's the FinOps muscle hiring managers look for as much as the medallion architecture itself.
 
+## Phase 10 — Dashboards (Databricks AI/BI)
+
+Three browser-based dashboards on top of the Gold star schema, built natively
+in Databricks AI/BI Dashboards. See `docs/PHASE10.md` for screenshots and the
+full design rationale; this section records the architectural decisions.
+
+### Why Databricks AI/BI, not Fabric DirectLake
+
+The original plan was Power BI on Fabric DirectLake. Microsoft restricted the
+Microsoft 365 Developer Program in 2025 to paid Visual Studio Pro/Enterprise,
+MAICPP/ISV Success partners, and Premier/Unified Support customers. There is
+no free path to Fabric capacity for individual portfolio work; a paid
+capacity at ₹50,000+/month would have contradicted this project's FinOps
+story.
+
+Pivoted to native AI/BI:
+
+- Queries live in Unity Catalog. Permissions and audit follow the catalog.
+- No separate semantic model. What's true in Gold is what the dashboard reads.
+- No DAX, no publish step, no Power BI Service tenant to manage.
+- Free with the existing Databricks workspace.
+
+Trade-off: lost DirectLake's no-copy story and Power BI's brand familiarity.
+Recoverable later — Unity Catalog tables can be read by Power BI Desktop via
+JDBC, so a Phase 11+ follow-up could mirror Dashboard 1 in Power BI and
+provide a tool-comparison talking point.
+
+### Dashboard inventory
+
+| Dashboard | Datasets | Purpose |
+|---|---|---|
+| GridSense — UK Carbon Live | 3 | intra-country: 18 UK regions, snapshot + 24h trend |
+| GridSense — European Fuel Mix | 3 | cross-country: 6 EU countries, mix + lifecycle CO₂ |
+| GridSense — Lakehouse Health | 3 | meta: row counts + freshness per medallion table |
+
+Dataset SQL stored in `docs/sql/dashboards/`, one folder per dashboard, so
+queries live in git and are reviewable without opening the Databricks UI.
+
+### Design decisions
+
+- **Three dashboards, not one.** Different grains (30-min UK regional, hourly
+  EU country, metadata). Mixing them would force grain compromises.
+- **Datasets fully qualified.** `dbw_gridsense_dev.<schema>.<table>` keeps
+  the SQL portable to the SQL Editor and external tools.
+- **Counter aggregation = None.** Avoids the misleading `SUM(...)` label
+  when the dataset already returns a single aggregated row.
+- **Filter cascade via shared dataset.** The D1 region filter and the line
+  chart both read `uk_intensity_24h_timeseries`; AI/BI auto-cascades.
+- **Freshness measured against business timestamp, not ingested_at.** A row
+  ingested 30 seconds ago representing 23:00 yesterday is not fresh from a
+  consumer's perspective. D3 reports the consumer truth.
+
+### Follow-ups added by Phase 10
+
+- **fact_generation_fuel_hourly unit bug.** The column
+  `estimated_gco2_per_hour` is computed as `value_mw × typical_gco2_per_kwh`
+  but should be `value_mw × 1000 × typical_gco2_per_kwh` (MW → MWh × 1000
+  kWh/MWh × g/kWh). All three Dashboard 2 datasets compensate at the dataset
+  level (`× 1000` in the tons math). Source fix belongs in
+  `databricks/src/gold/fact_generation_fuel_hourly.py` and is deferred to
+  Phase 7.C. After the fix, remove the workaround from
+  `eu_fuel_mix_latest_hour.sql`, `eu_kpis_latest_hour.sql`, and
+  `eu_co2_24h_per_country.sql`.
+
+- **Resume schedules before final demo.** Dashboard 3's freshness widget
+  reads "stale" / "very stale" while the FinOps pause is active. This is
+  intentional and explained by a text widget on the dashboard. For a live
+  demo, unpause schedules ~2 hours ahead so freshness statuses turn green.
+
+### What Phase 10 demonstrates beyond the technical work
+
+The Lakehouse Health dashboard surfaces staleness rather than hiding it.
+Most portfolio dashboards look fresh in screenshots and silently rot in
+production. Building the freshness widget *and* the FinOps explainer next
+to it is the kind of small detail that signals production engineering
+thinking: "the dashboard tells you when not to trust the dashboard."
+
 ---
 
-*Last updated: 2026-05-15 after Phase 7.B and FinOps pause decision. See commit log for change history.*
+*Last updated: 2026-05-17 after Phase 10 (Databricks AI/BI dashboards).*

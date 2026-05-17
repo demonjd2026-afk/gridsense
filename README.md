@@ -6,7 +6,7 @@ A near-real-time data lakehouse that ingests electricity grid telemetry from 30+
 
 ## Stack
 
-**Streaming ingestion** · **Medallion architecture** · **Spark Structured Streaming** · **MLflow forecasting** · **GenAI briefing agent** · **Power BI on Fabric DirectLake**
+**Streaming ingestion** · **Medallion architecture** · **Spark Structured Streaming** · **MLflow forecasting** · **GenAI briefing agent** · **Databricks AI/BI dashboards**
 
 ## Architecture
 
@@ -34,10 +34,10 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 | 4. Data producers (Container Apps) | ✅ Done (3 producers live) |
 | 5. Bronze layer streaming | ✅ Done (3 tables, hourly ingest) |
 | 6. Silver layer (cleansing + joins) | ✅ Done (5 tables incl. grid_state 3-way join) |
-| 7. Gold layer (star schema) | 🟡 In progress (3 dims + 1 fact done; fact_grid_hourly pending) |
+| 7. Gold layer (star schema) | ✅ Done (4 dims + 2 facts; fact_grid_hourly deferred to 7.C) |
 | 8. ML forecasting (MLflow) | ⚪ Not started |
 | 9. GenAI briefing agent | ⚪ Not started |
-| 10. Power BI on Fabric DirectLake | ⚪ Not started |
+| 10. Dashboards (Databricks AI/BI) | ✅ Done — 3 dashboards, see [docs/PHASE10.md](docs/PHASE10.md) |
 | 11. CI/CD (GitHub Actions) | ⚪ Not started |
 | 12. Monitoring & observability | ⚪ Not started |
 
@@ -60,14 +60,15 @@ flowchart LR
     B2 --> S
     B3 --> S
     S --> G[Gold star schema<br/>✅ Phase 7]
-    G --> PBI[Power BI<br/>⏳ Phase 10]
+    G --> PBI[Dashboards<br/>✅ Phase 10]
     G --> ML[ML Forecasting<br/>⏳ Phase 8]
     G --> AI[GenAI Briefing<br/>⏳ Phase 9]
 
     classDef done fill:#1f6f43,stroke:#2ecc71,color:#fff
     classDef wip fill:#5c3317,stroke:#f39c12,color:#fff
     class P1,P2,P3,EH,B1,B2,B3,S,G done
-    class PBI,ML,AI wip
+    class PBI done
+    class ML,AI wip
 ```
 
 ### What's running right now

@@ -43,3 +43,17 @@ or `demos/`; populated as the project grows.
   when to use.
 - Files are runnable as-is in Databricks SQL Editor — no parameter
   substitution required for the dev environment.
+
+## dashboards/
+
+SQL backups of the Databricks AI/BI Dashboard datasets. One folder per
+dashboard, each containing the dataset `.sql` files and a `README.md`
+describing the widgets and screenshots.
+
+| Folder | Dashboard |
+|---|---|
+| `dashboards/d1_uk_carbon_live/` | GridSense — UK Carbon Live |
+| `dashboards/d2_european_fuel_mix/` | GridSense — European Fuel Mix |
+| `dashboards/d3_lakehouse_health/` | GridSense — Lakehouse Health |
+
+See `docs/PHASE10.md` for the full design writeup.
