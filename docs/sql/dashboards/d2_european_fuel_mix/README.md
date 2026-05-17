@@ -24,8 +24,11 @@ energy mixes drive an order-of-magnitude difference in lifecycle CO₂.
 - `docs/screenshots/phase10/phase10-d2-1-european-co2-24h-divergence.png`
 - `docs/screenshots/phase10/phase10-d2-2-fuel-mix-by-country.png`
 
-## Known issue — unit-bug workaround
+## Note on units (post Phase 7.C fix)
 
-The upstream `gold.fact_generation_fuel_hourly.estimated_gco2_per_hour`
-column is off by a factor of 1000. All three dataset SQL files compensate
-at the dataset level. Fact-table fix deferred to Phase 7.C.
+`gold.fact_generation_fuel_hourly.estimated_gco2_per_hour` is stored as
+grams CO₂ per hour. All three dataset SQL files divide by `1e6` to convert
+to tons/hour for display. Earlier versions of these files contained a
+`* 1000` workaround because the upstream column was missing the MWh → kWh
+conversion; that has now been fixed at the source (see `databricks/src/gold/
+fact_generation_fuel_hourly.py`).

@@ -115,10 +115,14 @@ with_keys = with_fuel.select(
     F.col("f.is_low_carbon").alias("is_low_carbon"),
     F.col("g.value_mw").alias("value_mw"),
     F.col("f.typical_gco2_per_kwh").alias("typical_gco2_per_kwh"),
-    # estimated_gco2_per_hour: value_mw (averaged over the hour) * 1000 kWh/MWh
-    #                         * typical_gco2_per_kwh / 1000 g/kg = value_mw * typical
-    # Simplifies to value_mw * typical, in g/hr if value_mw is the MW for the hour.
-    (F.col("g.value_mw") * F.col("f.typical_gco2_per_kwh")).alias("estimated_gco2_per_hour"),
+    # estimated_gco2_per_hour, in grams CO2 equivalent per hour:
+    #   value_mw       MW averaged over the hour
+    #   x 1000         kWh/MWh conversion (since typical_gco2_per_kwh is per kWh)
+    #   x typical      g CO2 / kWh (IPCC AR5 lifecycle factor from dim_fuel_type)
+    # Result is grams/hour. Divide by 1e6 downstream for tons/hour.
+    (F.col("g.value_mw") * F.lit(1000) * F.col("f.typical_gco2_per_kwh")).alias(
+        "estimated_gco2_per_hour"
+    ),
     F.col("g.ingested_at").alias("ingested_at"),
 )
 
@@ -149,7 +153,7 @@ summary = spark.sql(f"""
       MIN(hour_utc) AS earliest,
       MAX(hour_utc) AS latest,
       ROUND(SUM(value_mw), 0) AS total_mw_summed,
-      ROUND(SUM(estimated_gco2_per_hour) / 1e9, 1) AS total_gigatons_co2_eq
+      ROUND(SUM(estimated_gco2_per_hour) / 1e12, 2) AS total_megatons_co2_eq
     FROM {TARGET_TABLE}
 """)
 summary.show(truncate=False)
