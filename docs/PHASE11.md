@@ -120,6 +120,17 @@ through CI.
 
 ## Verification — end-to-end CI/CD proven on 2026-05-17
 
+![GitHub Actions workflow runs — three reds becoming green across Terraform Apply and Databricks Bundle Deploy](screenshots/phase11/phase11-1-actions-runs-history.png)
+
+*GitHub Actions runs history. The mix of red and green is the actual debugging story —
+three failures, each revealing a real permission gap, then a clean green run on the fourth attempt.*
+
+![Successful Terraform Apply run showing OIDC login and all 6 steps green](screenshots/phase11/phase11-2-terraform-apply-detail.png)
+
+*The successful Terraform Apply on commit `f1d6125`. Azure Login (OIDC) green, init green,
+validate green, apply green. End-to-end OIDC authentication with zero stored secrets.*
+
+
 After the local bootstrap apply, three CI runs proved each piece of the
 trust chain. Two failed on real permission gaps; one passed clean.
 Each failure exposed something genuine about how Azure separates
