@@ -1,0 +1,42 @@
+# ============================================================================
+# Backfill job: Open-Meteo historical forecast → Bronze
+# ----------------------------------------------------------------------------
+# One-shot batch. PAUSED schedule (manual run only).
+# ============================================================================
+
+resources:
+  jobs:
+    backfill_open_meteo:
+      name: "[${bundle.target}] Backfill - Open-Meteo historical forecast"
+      description: "One-shot historical backfill of Open-Meteo Historical Forecast API to bronze.open_meteo. Manual run only."
+
+      schedule:
+        quartz_cron_expression: "0 0 0 1 1 ? 2099"   # never fires
+        timezone_id: "UTC"
+        pause_status: PAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: backfill_open_meteo
+          notebook_task:
+            notebook_path: ../../src/backfill/backfill_open_meteo.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              start_date: "2023-05-17"
+              end_date: "2026-05-17"
+              cities: "London,Paris,Berlin,Madrid,Rome,Amsterdam"
+              dry_run: "false"
+
+          max_retries: 0
+          timeout_seconds: 600   # 10 min; backfill is fast
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true
+
+      tags:
+        layer: bronze
+        kind: backfill
+        phase: "8.C"

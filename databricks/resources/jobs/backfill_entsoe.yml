@@ -1,0 +1,43 @@
+# ============================================================================
+# Backfill job: ENTSO-E generation → Bronze
+# ----------------------------------------------------------------------------
+# One-shot batch. PAUSED schedule (manual run only).
+# ============================================================================
+
+resources:
+  jobs:
+    backfill_entsoe:
+      name: "[${bundle.target}] Backfill - ENTSO-E generation"
+      description: "One-shot historical backfill of ENTSO-E A75 generation data to bronze.entsoe. Manual run only."
+
+      schedule:
+        quartz_cron_expression: "0 0 0 1 1 ? 2099"   # never fires
+        timezone_id: "UTC"
+        pause_status: PAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: backfill_entsoe
+          notebook_task:
+            notebook_path: ../../src/backfill/backfill_entsoe.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              start_date: "2023-05-17"
+              end_date: "2026-05-17"
+              chunk_days: "30"
+              countries: "DE,FR,ES,IT,NL,GB"
+              dry_run: "false"
+
+          max_retries: 0
+          timeout_seconds: 5400   # 90 minutes; backfill should fit in ~25 min
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true
+
+      tags:
+        layer: bronze
+        kind: backfill
+        phase: "8.B"
