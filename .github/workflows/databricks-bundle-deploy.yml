@@ -1,0 +1,61 @@
+name: Databricks Bundle Deploy
+
+# Runs on push to main. Deploys notebook + job-yaml changes to the Databricks
+# workspace via Asset Bundles. Authenticates via the SAME OIDC SP that
+# terraform-apply uses — assumes that SP has Contributor on the workspace
+# (granted via the github_oidc module's RBAC, may need additional grant if
+# Databricks workspace permissions are stricter).
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'databricks/**'
+      - '.github/workflows/databricks-bundle-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  WORKING_DIR: databricks
+  DATABRICKS_HOST: https://adb-7405606858641628.8.azuredatabricks.net
+
+jobs:
+  deploy:
+    name: databricks bundle deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+          databricks --version
+
+      - name: Configure Databricks auth via Azure CLI
+        # The Databricks CLI supports Azure CLI auth out-of-the-box when
+        # DATABRICKS_HOST + DATABRICKS_AUTH_TYPE=azure-cli are set, and az
+        # login has already happened (which azure/login@v2 did).
+        run: |
+          echo "DATABRICKS_HOST=${DATABRICKS_HOST}" >> "$GITHUB_ENV"
+          echo "DATABRICKS_AUTH_TYPE=azure-cli" >> "$GITHUB_ENV"
+
+      - name: Databricks bundle validate
+        working-directory: ${{ env.WORKING_DIR }}
+        run: databricks bundle validate -t dev
+
+      - name: Databricks bundle deploy
+        working-directory: ${{ env.WORKING_DIR }}
+        run: databricks bundle deploy -t dev

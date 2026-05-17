@@ -136,6 +136,22 @@ module "container_apps" {
 }
 
 # ----------------------------------------------------------------------------
+# GitHub Actions OIDC: SP + federated credentials for CI/CD
+# ----------------------------------------------------------------------------
+module "github_oidc" {
+  source = "../../modules/github_oidc"
+
+  env         = local.env
+  project     = local.project
+  github_org  = "demonjd2026-afk"
+  github_repo = "gridsense"
+
+  # State storage account from the backend block (hardcoded here because
+  # the backend block can't reference resources or outputs).
+  tfstate_storage_account_id = "/subscriptions/1262ba1e-e555-43f6-a5a6-d61c2c3abf3b/resourceGroups/rg-gridsense-tfstate/providers/Microsoft.Storage/storageAccounts/sttfstategs21126"
+}
+
+# ----------------------------------------------------------------------------
 # Outputs
 # ----------------------------------------------------------------------------
 output "resource_group_name" {
@@ -184,4 +200,17 @@ output "producers_uami_id" {
 
 output "producers_uami_client_id" {
   value = module.container_apps.producers_uami_client_id
+}
+
+# ----------------------------------------------------------------------------
+# GitHub Actions OIDC outputs
+# ----------------------------------------------------------------------------
+output "github_actions_client_id" {
+  description = "Set as AZURE_CLIENT_ID secret in GitHub repo settings"
+  value       = module.github_oidc.client_id
+}
+
+output "github_actions_sp_name" {
+  description = "Display name of the GitHub Actions SP (for audit/lookup)"
+  value       = module.github_oidc.app_registration_display_name
 }

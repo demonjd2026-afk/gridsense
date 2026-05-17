@@ -1,0 +1,93 @@
+name: Terraform Plan
+
+# Runs on every PR touching infrastructure. Posts the plan output as a PR
+# comment so reviewers see exactly what would change before merging.
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform-plan.yml'
+
+permissions:
+  id-token: write       # required for OIDC
+  contents: read
+  pull-requests: write  # required for posting plan as PR comment
+
+env:
+  TF_VERSION: '1.9.5'
+  WORKING_DIR: infra/envs/dev
+
+jobs:
+  plan:
+    name: terraform plan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform fmt check
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform fmt -check -recursive ../..
+
+      - name: Terraform init
+        working-directory: ${{ env.WORKING_DIR }}
+        env:
+          ARM_USE_OIDC:         true
+          ARM_CLIENT_ID:        ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID:        ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform validate
+
+      - name: Terraform plan
+        id: plan
+        working-directory: ${{ env.WORKING_DIR }}
+        env:
+          ARM_USE_OIDC:         true
+          ARM_CLIENT_ID:        ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID:        ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set +e
+          terraform plan -no-color -input=false -out=tfplan.bin > plan-output.txt 2>&1
+          plan_exit=$?
+          echo "exit_code=${plan_exit}" >> "$GITHUB_OUTPUT"
+          # Truncate to fit GitHub's 65k char PR comment limit
+          head -c 60000 plan-output.txt > plan-comment.txt
+          if [ "$plan_exit" -ne 0 ] && [ "$plan_exit" -ne 2 ]; then
+            cat plan-output.txt
+            exit "$plan_exit"
+          fi
+
+      - name: Post plan to PR
+        uses: actions/github-script@v7
+        env:
+          PLAN_FILE: ${{ env.WORKING_DIR }}/plan-comment.txt
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync(process.env.PLAN_FILE, 'utf8');
+            const body = "### Terraform Plan\n\n```hcl\n" + plan + "\n```\n\n*Plan run by GitHub Actions OIDC. Apply happens on merge to main.*";
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

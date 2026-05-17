@@ -2,6 +2,8 @@
 
 > Carbon-Aware Energy Grid Intelligence Lakehouse on Azure
 
+[![Terraform Apply](https://github.com/demonjd2026-afk/gridsense/actions/workflows/terraform-apply.yml/badge.svg)](https://github.com/demonjd2026-afk/gridsense/actions/workflows/terraform-apply.yml) [![Bundle Deploy](https://github.com/demonjd2026-afk/gridsense/actions/workflows/databricks-bundle-deploy.yml/badge.svg)](https://github.com/demonjd2026-afk/gridsense/actions/workflows/databricks-bundle-deploy.yml)
+
 A near-real-time data lakehouse that ingests electricity grid telemetry from 30+ European sources, computes live carbon intensity, forecasts the next 24 hours of grid cleanliness using machine learning, and generates carbon-aware workload scheduling recommendations through a GenAI agent.
 
 ## Stack
@@ -38,7 +40,7 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 | 8. ML forecasting (MLflow) | ⚪ Not started |
 | 9. GenAI briefing agent | ⚪ Not started |
 | 10. Dashboards (Databricks AI/BI) | ✅ Done — 3 dashboards, see [docs/PHASE10.md](docs/PHASE10.md) |
-| 11. CI/CD (GitHub Actions) | ⚪ Not started |
+| 11. CI/CD (GitHub Actions) | 🟡 Bootstrap (terraform plan/apply + bundle deploy via OIDC; see [docs/PHASE11.md](docs/PHASE11.md)) |
 | 12. Monitoring & observability | ⚪ Not started |
 
 ## Live status (as-built)
