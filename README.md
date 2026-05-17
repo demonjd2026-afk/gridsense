@@ -40,7 +40,7 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 | 8. ML forecasting (MLflow) | ⚪ Not started |
 | 9. GenAI briefing agent | ⚪ Not started |
 | 10. Dashboards (Databricks AI/BI) | ✅ Done — 3 dashboards, see [docs/PHASE10.md](docs/PHASE10.md) |
-| 11. CI/CD (GitHub Actions) | 🟡 Bootstrap (terraform plan/apply + bundle deploy via OIDC; see [docs/PHASE11.md](docs/PHASE11.md)) |
+| 11. CI/CD (GitHub Actions) | ✅ Done — Terraform + Bundle deploy via OIDC federation, no client secrets ([docs/PHASE11.md](docs/PHASE11.md)) |
 | 12. Monitoring & observability | ⚪ Not started |
 
 ## Live status (as-built)

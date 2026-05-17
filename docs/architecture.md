@@ -438,3 +438,76 @@ thinking: "the dashboard tells you when not to trust the dashboard."
 ---
 
 *Last updated: 2026-05-17 after Phase 10 (Databricks AI/BI dashboards).*
+
+
+## Phase 11 — CI/CD with OIDC federation
+
+GitHub Actions deploys infrastructure (Terraform) and Databricks Asset
+Bundles automatically on push to `main`, authenticated to Azure via OIDC
+federation rather than stored client secrets.
+
+### Trust chain
+
+```
+GitHub Actions workflow run
+    │
+    │  (1) Requests OIDC JWT from GitHub token service
+    ▼
+GitHub OIDC provider — mints short-lived JWT with `sub` claim like
+                       "repo:demonjd2026-afk/gridsense:ref:refs/heads/main"
+    │
+    │  (2) Runner presents JWT to azure/login@v2
+    ▼
+Azure AD — validates the JWT against the federated identity credential
+           registered on the gridsense-github-actions-dev app
+    │
+    │  (3) Issues short-lived access token scoped to the SP
+    ▼
+Azure resources via SP's RBAC:
+    Contributor (subscription)
+  + Storage Blob Data Contributor (tfstate)
+  + Key Vault Administrator (dev KV)
+  + Application.ReadWrite.OwnedBy (Microsoft Graph)
+  + Workspace access + SQL access (Databricks workspace, account-level SP)
+```
+
+No client secret exists at any step. Tokens are short-lived (~10 min) and
+specific to a single workflow run.
+
+### Three workflows, three triggers
+
+| Workflow | Trigger | OIDC subject | Permissions |
+|---|---|---|---|
+| `terraform-plan.yml` | PR with `infra/**` changes | `repo:.../gridsense:pull_request` | plan only, posts as PR comment |
+| `terraform-apply.yml` | push to main with `infra/**` changes | `repo:.../gridsense:ref:refs/heads/main` | full apply |
+| `databricks-bundle-deploy.yml` | push to main with `databricks/**` changes | same as apply | bundle deploy via Asset Bundle CLI |
+
+Mapping different triggers to different OIDC subjects gives least-privilege
+at the CI level: a malicious PR can plan but not apply.
+
+### Module: `infra/modules/github_oidc/`
+
+The module owns the Azure-side trust:
+
+- `azuread_application "gh_oidc"` — app registration
+- `azuread_service_principal "gh_oidc"` — SP attached to the app
+- 3× `azuread_application_federated_identity_credential` — one per subject
+- `azurerm_role_assignment.subscription_contributor` — Azure RBAC
+- `azurerm_role_assignment.tfstate_blob_data_contributor` — tfstate access
+- `azurerm_role_assignment.key_vault_administrator` — KV data plane
+- `azuread_app_role_assignment.msgraph_application_readwrite_ownedby` —
+  Graph permissions for reading existing azuread_application resources
+
+7 resources total in the module. After local bootstrap, all subsequent
+applies happen through CI.
+
+### One-time bootstrap step (Databricks workspace)
+
+Databricks workspace permissions are NOT part of Azure RBAC. The SP must
+be added to the workspace as a Microsoft Entra ID-managed service principal
+via the workspace UI. Documented in [PHASE11.md](PHASE11.md). One-time
+manual step.
+
+For a real production environment, this would be automated via SCIM
+provisioning from Azure AD or via the Databricks Terraform provider.
+For a single-workspace dev environment, the manual step is appropriate.
