@@ -61,6 +61,11 @@ module "foundation" {
   env      = local.env
   location = local.location
   project  = local.project
+
+  # Pin Key Vault admin to a stable user object id so that local and CI
+  # applies agree on the desired state. Replace with another user/SP
+  # object_id if Jay leaves the project.
+  kv_admin_principal_id = "3a075b46-9060-4569-b40b-458068cf399a" # jay_do (jayanthdolai@gmail.com)
 }
 
 # ----------------------------------------------------------------------------

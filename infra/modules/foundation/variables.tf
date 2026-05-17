@@ -34,3 +34,8 @@ variable "extra_tags" {
   description = "Additional tags to merge into the default tag set"
   default     = {}
 }
+
+variable "kv_admin_principal_id" {
+  description = "Object ID of the user/identity that holds Key Vault Administrator on the dev vault. Pinned to a stable value rather than data.azurerm_client_config.current.object_id, so that local applies and CI applies agree on the desired state."
+  type        = string
+}
