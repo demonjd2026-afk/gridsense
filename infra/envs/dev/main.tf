@@ -149,6 +149,9 @@ module "github_oidc" {
   # State storage account from the backend block (hardcoded here because
   # the backend block can't reference resources or outputs).
   tfstate_storage_account_id = "/subscriptions/1262ba1e-e555-43f6-a5a6-d61c2c3abf3b/resourceGroups/rg-gridsense-tfstate/providers/Microsoft.Storage/storageAccounts/sttfstategs21126"
+
+  # Key Vault for data-plane access (read secrets in CI)
+  key_vault_id = module.foundation.key_vault_id
 }
 
 # ----------------------------------------------------------------------------

@@ -22,3 +22,8 @@ variable "tfstate_storage_account_id" {
   description = "Resource ID of the storage account holding tfstate; SP needs Storage Blob Data Contributor here"
   type        = string
 }
+
+variable "key_vault_id" {
+  description = "Resource ID of the dev Key Vault; SP needs Key Vault Administrator here for data-plane secret CRUD"
+  type        = string
+}

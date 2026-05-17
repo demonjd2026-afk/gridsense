@@ -107,3 +107,40 @@ resource "azurerm_role_assignment" "tfstate_blob_data_contributor" {
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azuread_service_principal.gh_oidc.object_id
 }
+
+# ----------------------------------------------------------------------------
+# Key Vault data-plane access
+# ----------------------------------------------------------------------------
+# Subscription Contributor lets the SP change KV SKU / delete the vault
+# (mgmt plane). It does NOT let the SP read/write secrets (data plane).
+# Key Vault Administrator covers full data-plane CRUD.
+
+resource "azurerm_role_assignment" "key_vault_administrator" {
+  scope                = var.key_vault_id
+  role_definition_name = "Key Vault Administrator"
+  principal_id         = azuread_service_principal.gh_oidc.object_id
+}
+
+# ----------------------------------------------------------------------------
+# Azure AD Application read/write via Microsoft Graph
+# ----------------------------------------------------------------------------
+# Required for Terraform to refresh state of existing azuread_application
+# resources (e.g., foundation module's "databricks_eh" app). Without this,
+# every "terraform plan" fails with Authorization_RequestDenied on
+# ApplicationsClient.BaseClient.Get().
+#
+# We grant Application.ReadWrite.OwnedBy (least privilege — covers apps
+# this SP owns or will create). For broader org-wide app management you'd
+# use Application.ReadWrite.All.
+
+data "azuread_application_published_app_ids" "well_known" {}
+
+data "azuread_service_principal" "msgraph" {
+  client_id = data.azuread_application_published_app_ids.well_known.result["MicrosoftGraph"]
+}
+
+resource "azuread_app_role_assignment" "msgraph_application_readwrite_ownedby" {
+  app_role_id         = data.azuread_service_principal.msgraph.app_role_ids["Application.ReadWrite.OwnedBy"]
+  principal_object_id = azuread_service_principal.gh_oidc.object_id
+  resource_object_id  = data.azuread_service_principal.msgraph.object_id
+}
