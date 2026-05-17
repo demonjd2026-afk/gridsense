@@ -5,6 +5,15 @@ from __future__ import annotations
 import streamlit as st
 from agent.llm import build_client, chat_with_tools
 from agent.prompts import SYSTEM_PROMPT
+from agent.rate_limit import (
+    GLOBAL_DAILY_LIMIT,
+    PER_SESSION_LIMIT,
+    check_can_ask,
+    get_global_count,
+    get_session_count,
+    increment_global_count,
+    increment_session_count,
+)
 from agent.tools import TOOL_REGISTRY, TOOL_SCHEMAS
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -77,7 +86,14 @@ with st.sidebar:
     st.divider()
     if st.button("Clear conversation"):
         st.session_state.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        st.session_state.question_count = 0
         st.rerun()
+
+    st.divider()
+    st.caption(
+        f"**Session usage:** {get_session_count()} / {PER_SESSION_LIMIT} questions  \n"
+        f"**Daily quota:** {get_global_count()} / {GLOBAL_DAILY_LIMIT} questions"
+    )
 
     st.divider()
     st.caption(
@@ -107,7 +123,15 @@ if "pending_question" in st.session_state:
     user_input = st.session_state.pop("pending_question")
 
 if user_input:
-    # Echo user message
+    allowed, deny_reason = check_can_ask()
+    if not allowed:
+        with st.chat_message("assistant"):
+            st.warning(deny_reason)
+        st.stop()
+
+    increment_session_count()
+    increment_global_count()
+
     with st.chat_message("user"):
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
