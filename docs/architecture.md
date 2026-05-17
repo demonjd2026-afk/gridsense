@@ -511,3 +511,97 @@ manual step.
 For a real production environment, this would be automated via SCIM
 provisioning from Azure AD or via the Databricks Terraform provider.
 For a single-workspace dev environment, the manual step is appropriate.
+
+
+## Phase 7.B — fact_grid_hourly (integrated country × hour fact)
+
+The third gold fact, joining all source families at one row per
+(country_code, hour_utc). This is the **integrated** view — the other two
+gold facts have narrower grains:
+
+| Fact | Grain | Scope |
+|---|---|---|
+| `fact_generation_fuel_hourly` | (country, hour, fuel) | EU 5 countries |
+| `fact_carbon_intensity_30min` | (region, period) | UK regions only |
+| `fact_grid_hourly` | (country, hour) | EU 5 countries — **the ML training table** |
+
+### What this fact uniquely contains
+
+Per row:
+
+- **Natural key:** `(country_code, hour_utc)`
+- **FKs:** `country_key`, `time_key` (`yyyyMMddHH` BIGINT)
+- **Weather measures** (from Open-Meteo via silver.weather):
+  `temperature_c`, `wind_speed_kmh`, `cloud_cover_pct`, `solar_radiation_wm2`
+- **Generation measures** (from ENTSO-E via silver.generation):
+  `total_generation_mw`, `renewable_generation_mw`, `low_carbon_generation_mw`,
+  `renewable_share_pct`, `low_carbon_share_pct`
+- **Carbon measures** (lifecycle estimate + UK measured):
+  `estimated_lifecycle_gco2_per_kwh`, `estimated_lifecycle_gco2_per_hour`,
+  `uk_carbon_intensity_forecast` (NULL for non-UK countries)
+
+### Two renewable definitions, side by side
+
+The fact stores **both** `renewable_share_pct` and `low_carbon_share_pct`
+because they answer different questions:
+
+- `renewable_share_pct` uses `dim_fuel_type.is_renewable` — the standard
+  IEA/Ember definition, includes biomass, excludes nuclear
+- `low_carbon_share_pct` uses `dim_fuel_type.is_low_carbon` — the IPCC AR5
+  lifecycle definition, includes nuclear, excludes biomass and waste
+
+The dim correctly classifies biomass as renewable but NOT low-carbon —
+combustion releases present-day CO₂ even though the feedstock regrows over
+decades. Most public carbon dashboards conflate the two definitions. The
+fact keeps them separate so downstream consumers can pick the right one
+for their narrative.
+
+### The data tells a story the fact was built to tell
+
+Per-country snapshot at the latest hour (2026-05-16 01:00 UTC):
+
+| Country | Total MW | Renewable % | Low-carbon % | gCO₂/kWh |
+|---|---|---|---|---|
+| DE | 41,594 | 56.4 | 45.1 | 382 |
+| IT | 16,804 | 49.5 | 46.6 | 268 |
+| NL | 4,435 | 48.6 | 47.1 | 265 |
+| ES | 21,352 | 60.2 | 78.2 | 111 |
+| FR | 52,138 | 23.5 | **97.6** | **21** |
+
+Germany shows a renewable share of 56.4% but only 45.1% low-carbon — an
+11.3 percentage-point gap that is the biomass distinction surfacing in
+the data. France shows the opposite pattern: the lowest renewable share
+(23.5%) but the cleanest grid (21 gCO₂/kWh, 97.6% low-carbon) because of
+nuclear dominance. One row per country reveals what most carbon
+discourse misses.
+
+### CO₂ calculation is independent of fact_generation_fuel_hourly
+
+`estimated_lifecycle_gco2_per_kwh` is recomputed in this notebook from
+`silver.grid_state` directly rather than queried from
+`fact_generation_fuel_hourly`. This is intentional — the two facts
+cross-verify each other.
+
+Verification at 2026-05-16 01:00 UTC:
+
+- `fact_generation_fuel_hourly` summed over DE fuels: **15,876 tCO₂/hour**
+- `fact_grid_hourly` for DE at the same timestamp: **15,876 tCO₂/hour**
+
+Independent calculations producing identical results. Both apply the same
+unit chain documented in Phase 7.C:
+`value_mw × 1000 × typical_gco2_per_kwh = grams/hour`.
+
+### Build pipeline
+
+- **Source notebook:** `databricks/src/gold/fact_grid_hourly.py`
+- **Bundle job:** `databricks/resources/jobs/gold_fact_grid_hourly.yml`
+  (paused during the FinOps pause window)
+- **Verification:** `docs/sql/verification/phase7b_fact_grid_hourly_summary.sql`
+- **First production deploy:** via GitHub Actions CI/CD (Phase 11), not
+  manual `databricks bundle deploy` — the bundle-deploy workflow fired
+  automatically on the merge to `main` (commit `db46d95`) and completed
+  in ~47 seconds.
+
+This last point matters: Phase 7.B is the first phase where the CI/CD
+pipeline built in Phase 11 carried new analytical code into production
+without any manual deploy step. The pipeline does what it was built to do.

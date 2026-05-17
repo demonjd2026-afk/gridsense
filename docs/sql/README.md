@@ -14,6 +14,7 @@ in `docs/screenshots/` is sourced from one of these.
 | `phase7a_row_counts.sql` | All Gold tables have expected row counts |
 | `phase7a_measure_quality.sql` | `fact_generation_fuel_hourly` measure nulls + range |
 | `phase7b_fact_summary.sql` | `fact_carbon_intensity_30min` rows, grain, forecast vs actual |
+| `phase7b_fact_grid_hourly_summary.sql` | `fact_grid_hourly` row count + grain + share percentages + per-country snapshot |
 | `phase7b_orphan_check.sql` | Every fact FK resolves to a dim row |
 | `chain_catchup_silver_gold_parity.sql` | Silver and Gold row-count parity after a re-run |
 | `chain_catchup_all_layers_freshness.sql` | Latest timestamp per Silver table |
