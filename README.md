@@ -9,6 +9,7 @@ A near-real-time data lakehouse that ingests electricity grid telemetry from 30+
 **Live demo:** [gridsense-carbon.streamlit.app](https://gridsense-carbon.streamlit.app) — ask the GenAI agent live questions about EU/UK grid carbon intensity.
 
 ## Stack
+- **Historical backfill (Phase 8.A/B/C):** Lambda-architecture split — live ingestion runs as a streaming pipeline (producer → Event Hubs → Bronze) while historical data flows through a one-shot batch path (API → Bronze direct, skipping Event Hubs). Three backfills (UK Carbon Intensity, ENTSO-E generation, Open-Meteo weather) populated 3 years of history without disrupting live streams. Source-tagged envelopes (`*-backfill`) preserve the audit trail through Silver MERGE.
 - **GenAI agent layer (Phase 9):** Streamlit Community Cloud + Azure OpenAI (`gpt-4.1-mini` in `swedencentral`) + OpenAI tool calling over 5 hand-written SQL tools against the Gold facts. Live at [gridsense-carbon.streamlit.app](https://gridsense-carbon.streamlit.app).
 
 **Streaming ingestion** · **Medallion architecture** · **Spark Structured Streaming** · **MLflow forecasting** · **GenAI briefing agent** · **Databricks AI/BI dashboards**
@@ -40,7 +41,7 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 | 5. Bronze layer streaming | ✅ Done (3 tables, hourly ingest) |
 | 6. Silver layer (cleansing + joins) | ✅ Done (5 tables incl. grid_state 3-way join) |
 | 7. Gold layer (star schema) | ✅ Done (4 dims + 3 facts; integrated fact_grid_hourly is the Phase 8 ML training table) |
-| 8. ML forecasting (MLflow) | ⚪ Not started |
+| 8. ML forecasting (MLflow) | 🚧 In progress — data backfilled (8.A/B/C: 3-year history, ~2.7M rows in the lakehouse), model training (8.D) pending |
 | 9. GenAI agent | ✅ Done ([Live demo](https://gridsense-carbon.streamlit.app)) |
 | 10. Dashboards (Databricks AI/BI) | ✅ Done — 3 dashboards, see [docs/PHASE10.md](docs/PHASE10.md) |
 | 11. CI/CD (GitHub Actions) | ✅ Done — Terraform + Bundle deploy via OIDC federation, no client secrets ([docs/PHASE11.md](docs/PHASE11.md)) |
@@ -66,8 +67,8 @@ flowchart LR
     B3 --> S
     S --> G[Gold star schema<br/>✅ Phase 7]
     G --> PBI[Dashboards<br/>✅ Phase 10]
-    G --> ML[ML Forecasting<br/>⏳ Phase 8]
-    G --> AI[GenAI Briefing<br/>⏳ Phase 9]
+    G --> ML[ML Forecasting<br/>🚧 Phase 8: data ready, training pending]
+    G --> AI[GenAI Briefing<br/>✅ Phase 9]
 
     classDef done fill:#1f6f43,stroke:#2ecc71,color:#fff
     classDef wip fill:#5c3317,stroke:#f39c12,color:#fff
