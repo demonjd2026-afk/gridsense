@@ -1,0 +1,41 @@
+# ============================================================================
+# Phase 8.D.1 — Feature engineering job
+# ----------------------------------------------------------------------------
+# PAUSED schedule (manual run for now). Once Phase 8.D.4 (agent integration)
+# ships, this would be unpaused and scheduled hourly so the agent always has
+# fresh features. For now, manual run only.
+# ============================================================================
+
+resources:
+  jobs:
+    ml_features_carbon_forecast:
+      name: "[${bundle.target}] ML - Carbon forecast features"
+      description: "Builds gold.feature_carbon_forecast from fact_grid_hourly. Phase 8.D.1."
+
+      schedule:
+        quartz_cron_expression: "0 0 0 1 1 ? 2099"   # never fires (manual run)
+        timezone_id: "UTC"
+        pause_status: PAUSED
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: features_carbon_forecast
+          notebook_task:
+            notebook_path: ../../src/ml/features_carbon_forecast.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              mode: "create_or_replace"
+
+          max_retries: 0
+          timeout_seconds: 600
+
+      email_notifications:
+        on_failure: []
+        no_alert_for_skipped_runs: true
+
+      tags:
+        layer: gold
+        kind: ml-features
+        phase: "8.D.1"
