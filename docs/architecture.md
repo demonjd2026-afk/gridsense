@@ -20,13 +20,19 @@ flowchart LR
     P3 --> EH
     EH --> B[Bronze<br/>3 streaming tables]
     B --> S[Silver<br/>5 cleaned + joined tables]
-    S --> G[Gold<br/>star schema:<br/>3 dims + 1 fact]
-    G --> CONS[ML / GenAI / Power BI<br/>future phases]
+    S --> G[Gold star schema<br/>4 dims + 4 facts]
+    G --> FEAT[gold.feature_carbon_forecast<br/>130K rows, 19 features]
+    FEAT --> LGB[LightGBM regressor<br/>Unity Catalog Model Registry<br/>R²=0.83 on 2026 test set]
+    LGB --> FCAST[gold.fact_carbon_forecast<br/>845 predictions]
+    G --> DASH[3 Databricks AI/BI Dashboards]
+    G --> AGENT[Streamlit + Azure OpenAI Agent<br/>6 tools]
+    FCAST --> AGENT
+    AGENT --> URL[Live URL:<br/>gridsense-carbon.streamlit.app]
 
     classDef done fill:#1f6f43,stroke:#2ecc71,color:#fff
-    classDef wip fill:#5c3317,stroke:#f39c12,color:#fff
-    class P1,P2,P3,EH,B,S done
-    class G,CONS wip
+    classDef ml fill:#4a4dff,stroke:#7e80ff,color:#fff
+    class P1,P2,P3,EH,B,S,G,DASH,AGENT,URL done
+    class FEAT,LGB,FCAST ml
 ```
 
 Cadences and ownership:

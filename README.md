@@ -94,19 +94,21 @@ flowchart LR
     EH --> B1[bronze.carbon_intensity]
     EH --> B2[bronze.open_meteo]
     EH --> B3[bronze.entsoe]
-    B1 --> S[Silver layer]
+    B1 --> S[Silver layer<br/>5 tables]
     B2 --> S
     B3 --> S
-    S --> G[Gold star schema<br/>✅ Phase 7]
-    G --> PBI[Dashboards<br/>✅ Phase 10]
-    G --> ML[ML Forecasting<br/>✅ Phase 8]
-    G --> AI[GenAI Briefing<br/>✅ Phase 9]
+    S --> G[Gold star schema<br/>4 dims + 4 facts<br/>✅ Phase 7]
+    G --> ML[LightGBM Forecast<br/>Unity Catalog<br/>✅ Phase 8]
+    ML --> FCAST[gold.fact_carbon_forecast]
+    G --> AGENT[GenAI Agent<br/>6 tools, Azure OpenAI<br/>✅ Phase 9]
+    FCAST --> AGENT
+    G --> PBI[3 AI/BI Dashboards<br/>✅ Phase 10]
+    AGENT --> URL[gridsense-carbon.streamlit.app]
 
     classDef done fill:#1f6f43,stroke:#2ecc71,color:#fff
-    classDef wip fill:#5c3317,stroke:#f39c12,color:#fff
-    class P1,P2,P3,EH,B1,B2,B3,S,G done
-    class PBI done
-    class ML,AI wip
+    classDef ml fill:#4a4dff,stroke:#7e80ff,color:#fff
+    class P1,P2,P3,EH,B1,B2,B3,S,G,PBI,AGENT,URL done
+    class ML,FCAST ml
 ```
 
 ### What's running right now
