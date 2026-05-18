@@ -8,6 +8,38 @@ A near-real-time data lakehouse that ingests electricity grid telemetry from 30+
 
 **Live demo:** [gridsense-carbon.streamlit.app](https://gridsense-carbon.streamlit.app) — ask the GenAI agent live questions about EU/UK grid carbon intensity.
 
+
+### Try asking the live agent
+
+The agent answers questions about live EU and UK grid carbon intensity. Just click any example in the sidebar, or type your own.
+
+**Current grid state:**
+- *What's the cleanest EU country right now?*
+- *Why is Germany so dirty right now?*
+- *Which UK region is cleanest?*
+- *Show me Spain's energy mix*
+
+**24-hour trends:**
+- *How has France's carbon trended over the past 24 hours?*
+- *Is Germany getting cleaner today?*
+
+**Carbon-aware scheduling:**
+- *When should I run my UK batch job for lowest carbon?*
+- *What's the cleanest 30-minute window in the UK?*
+
+**ML-powered forecasting (Phase 8):**
+- *Will Germany be cleaner tomorrow than today?*
+- *What's the forecast for France?*
+- *Should I run my batch job in Germany tomorrow or France?*
+- *What does the model predict for tomorrow's grid?*
+
+**Multi-tool orchestration (most impressive demos):**
+- *Compare DE and FR right now and tomorrow*
+- *Which country has the most nuclear production?*
+- *Find the cleanest place to run my workload across UK regions and EU forecasts*
+
+The agent will honestly decline questions outside its scope (electricity prices, weather, countries not in the dataset), and the *"Show data source used"* expander under every answer reveals the exact SQL tools and parameters it called.
+
 ## Stack
 - **Historical backfill (Phase 8.A/B/C):** Lambda-architecture split — live ingestion runs as a streaming pipeline (producer → Event Hubs → Bronze) while historical data flows through a one-shot batch path (API → Bronze direct, skipping Event Hubs). Three backfills (UK Carbon Intensity, ENTSO-E generation, Open-Meteo weather) populated 3 years of history without disrupting live streams. Source-tagged envelopes (`*-backfill`) preserve the audit trail through Silver MERGE.
 - **GenAI agent layer (Phase 9):** Streamlit Community Cloud + Azure OpenAI (`gpt-4.1-mini` in `swedencentral`) + OpenAI tool calling over 5 hand-written SQL tools against the Gold facts. Live at [gridsense-carbon.streamlit.app](https://gridsense-carbon.streamlit.app).
