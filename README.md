@@ -85,29 +85,25 @@ Three producers publish to Azure Event Hubs; thirteen Databricks jobs cascade ho
 
 ```mermaid
 flowchart LR
-    A1[UK Carbon<br/>Intensity API] --> P1[ca-carbon-intensity-dev<br/>5 min poll]
-    A2[Open-Meteo<br/>API] --> P2[ca-open-meteo-dev<br/>15 min poll]
-    A3[ENTSO-E<br/>API] --> P3[ca-entsoe-dev<br/>1 hr poll]
-    P1 --> EH[(Event Hubs<br/>3 topics)]
+    A1[UK Carbon Intensity API] --> P1[Azure Container App<br/><i>ca-carbon-intensity-dev</i><br/>5 min poll]
+    A2[Open-Meteo API] --> P2[Azure Container App<br/><i>ca-open-meteo-dev</i><br/>15 min poll]
+    A3[ENTSO-E API] --> P3[Azure Container App<br/><i>ca-entsoe-dev</i><br/>1 hr poll]
+    P1 --> EH[(Azure Event Hubs<br/><i>evh-gridsense-dev</i><br/>3 topics)]
     P2 --> EH
     P3 --> EH
-    EH --> B1[bronze.carbon_intensity]
-    EH --> B2[bronze.open_meteo]
-    EH --> B3[bronze.entsoe]
-    B1 --> S[Silver layer<br/>5 tables]
-    B2 --> S
-    B3 --> S
+    EH --> B[Bronze layer<br/>3 streaming Delta tables<br/><i>Databricks + Unity Catalog</i>]
+    B --> S[Silver layer<br/>5 cleaned + joined Delta tables]
     S --> G[Gold star schema<br/>4 dims + 4 facts<br/>✅ Phase 7]
-    G --> ML[LightGBM Forecast<br/>Unity Catalog<br/>✅ Phase 8]
-    ML --> FCAST[gold.fact_carbon_forecast]
-    G --> AGENT[GenAI Agent<br/>6 tools, Azure OpenAI<br/>✅ Phase 9]
+    G --> ML[LightGBM Forecast Model<br/><i>Unity Catalog Model Registry</i><br/>✅ Phase 8]
+    ML --> FCAST[Carbon Forecast Fact<br/><i>gold.fact_carbon_forecast</i><br/>845 predictions]
+    G --> AGENT[GenAI Agent<br/><i>Streamlit + Azure OpenAI</i><br/>6 tools<br/>✅ Phase 9]
     FCAST --> AGENT
-    G --> PBI[3 AI/BI Dashboards<br/>✅ Phase 10]
-    AGENT --> URL[gridsense-carbon.streamlit.app]
+    G --> PBI[3 AI/BI Dashboards<br/><i>Databricks-native</i><br/>✅ Phase 10]
+    AGENT --> URL[Live demo<br/><i>gridsense-carbon.streamlit.app</i>]
 
     classDef done fill:#1f6f43,stroke:#2ecc71,color:#fff
     classDef ml fill:#4a4dff,stroke:#7e80ff,color:#fff
-    class P1,P2,P3,EH,B1,B2,B3,S,G,PBI,AGENT,URL done
+    class P1,P2,P3,EH,B,S,G,PBI,AGENT,URL done
     class ML,FCAST ml
 ```
 

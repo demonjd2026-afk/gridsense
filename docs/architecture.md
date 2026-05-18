@@ -12,22 +12,22 @@ Three Python producers running on Azure Container Apps poll three independent el
 
 ```mermaid
 flowchart LR
-    A1[UK Carbon Intensity API] --> P1[ca-carbon-intensity-dev]
-    A2[Open-Meteo API] --> P2[ca-open-meteo-dev]
-    A3[ENTSO-E API] --> P3[ca-entsoe-dev]
-    P1 --> EH[(Event Hubs<br/>3 topics)]
+    A1[UK Carbon Intensity API] --> P1[Azure Container App<br/><i>ca-carbon-intensity-dev</i>]
+    A2[Open-Meteo API] --> P2[Azure Container App<br/><i>ca-open-meteo-dev</i>]
+    A3[ENTSO-E API] --> P3[Azure Container App<br/><i>ca-entsoe-dev</i>]
+    P1 --> EH[(Azure Event Hubs<br/><i>evh-gridsense-dev</i><br/>3 topics)]
     P2 --> EH
     P3 --> EH
-    EH --> B[Bronze<br/>3 streaming tables]
-    B --> S[Silver<br/>5 cleaned + joined tables]
+    EH --> B[Bronze layer<br/>3 streaming Delta tables<br/><i>Databricks + Unity Catalog</i>]
+    B --> S[Silver layer<br/>5 cleaned + joined Delta tables]
     S --> G[Gold star schema<br/>4 dims + 4 facts]
-    G --> FEAT[gold.feature_carbon_forecast<br/>130K rows, 19 features]
-    FEAT --> LGB[LightGBM regressor<br/>Unity Catalog Model Registry<br/>R²=0.83 on 2026 test set]
-    LGB --> FCAST[gold.fact_carbon_forecast<br/>845 predictions]
-    G --> DASH[3 Databricks AI/BI Dashboards]
-    G --> AGENT[Streamlit + Azure OpenAI Agent<br/>6 tools]
+    G --> FEAT[Feature table<br/><i>gold.feature_carbon_forecast</i><br/>130K rows, 19 features]
+    FEAT --> LGB[LightGBM regressor<br/><i>Unity Catalog Model Registry</i><br/>R²=0.83 on 2026 test set]
+    LGB --> FCAST[Forecast fact<br/><i>gold.fact_carbon_forecast</i><br/>845 predictions]
+    G --> DASH[3 AI/BI Dashboards<br/><i>Databricks-native</i>]
+    G --> AGENT[GenAI Agent<br/><i>Streamlit + Azure OpenAI</i><br/>6 tools]
     FCAST --> AGENT
-    AGENT --> URL[Live URL:<br/>gridsense-carbon.streamlit.app]
+    AGENT --> URL[Live demo<br/><i>gridsense-carbon.streamlit.app</i>]
 
     classDef done fill:#1f6f43,stroke:#2ecc71,color:#fff
     classDef ml fill:#4a4dff,stroke:#7e80ff,color:#fff
