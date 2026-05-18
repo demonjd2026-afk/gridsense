@@ -141,6 +141,40 @@ def get_cleanest_window_uk(connection, region_name: str = "GB", **kwargs) -> pd.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tool 6: 24h carbon forecast (LightGBM model)
+# ─────────────────────────────────────────────────────────────────────────────
+def get_carbon_forecast(connection, country_code: str, **kwargs) -> pd.DataFrame:
+    """Return the most recent 24-hour carbon intensity forecast for one country.
+
+    Backed by a LightGBM regressor (R^2 = 0.83 on a held-out 2026 test set)
+    trained on 3 years of historical weather + generation + carbon intensity
+    data. The model is registered in Unity Catalog and inference predictions
+    are materialized to gold.fact_carbon_forecast.
+    """
+    cc = country_code.upper()
+    query = f"""
+    WITH ranked AS (
+      SELECT *,
+        ROW_NUMBER() OVER (PARTITION BY country_code ORDER BY base_hour_utc DESC) AS rn
+      FROM {CATALOG}.gold.fact_carbon_forecast
+      WHERE country_code = '{cc}'
+    )
+    SELECT
+      country_code,
+      base_hour_utc                              AS prediction_made_from,
+      target_hour_utc                            AS forecast_for,
+      ROUND(carbon_current_at_base, 1)           AS current_gco2_per_kwh,
+      ROUND(predicted_carbon_gco2_kwh, 1)        AS forecast_gco2_per_kwh_t24h,
+      ROUND(predicted_carbon_gco2_kwh - carbon_current_at_base, 1) AS expected_change_gco2,
+      model_name,
+      model_version
+    FROM ranked
+    WHERE rn = 1
+    """
+    return _query(**connection, query=query)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Tool schemas for OpenAI function calling
 # ─────────────────────────────────────────────────────────────────────────────
 TOOL_SCHEMAS = [
@@ -214,6 +248,31 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_carbon_forecast",
+            "description": (
+                "Get the 24-hour-ahead carbon intensity forecast for one EU country, "
+                "produced by a LightGBM model trained on 3 years of historical data. "
+                "Use for 'will country X be cleaner tomorrow?', 'what's the forecast?', "
+                "'should I schedule my workload for tomorrow?' questions. Returns the "
+                "current carbon level, the predicted level 24h from now, and the "
+                "expected change in gCO2/kWh."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "country_code": {
+                        "type": "string",
+                        "enum": ["DE", "ES", "FR", "IT", "NL"],
+                        "description": "Two-letter country code",
+                    },
+                },
+                "required": ["country_code"],
+            },
+        },
+    },
 ]
 
 
@@ -224,4 +283,5 @@ TOOL_REGISTRY = {
     "get_country_fuel_mix": get_country_fuel_mix,
     "get_24h_carbon_trend": get_24h_carbon_trend,
     "get_cleanest_window_uk": get_cleanest_window_uk,
+    "get_carbon_forecast": get_carbon_forecast,
 }

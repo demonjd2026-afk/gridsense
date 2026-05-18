@@ -78,6 +78,7 @@ with st.sidebar:
         "Which UK region is cleanest?",
         "How has France's carbon trended over the last 24 hours?",
         "When should I run my UK batch job for lowest carbon?",
+        "Will Germany be cleaner tomorrow than today?",
     ]
     for ex in examples:
         if st.button(ex, key=f"ex_{ex}", use_container_width=True):
