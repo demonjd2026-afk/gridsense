@@ -605,3 +605,305 @@ unit chain documented in Phase 7.C:
 This last point matters: Phase 7.B is the first phase where the CI/CD
 pipeline built in Phase 11 carried new analytical code into production
 without any manual deploy step. The pipeline does what it was built to do.
+
+
+## Phase 8 — ML forecasting (carbon intensity)
+
+A LightGBM regressor trained on 3 years of historical data, registered in
+Unity Catalog Model Registry, generating 24-hour-ahead carbon intensity
+forecasts queried live by the agent at gridsense-carbon.streamlit.app.
+
+This phase spans four sub-phases of data prep + ML pipeline:
+8.A/B/C historical backfills, 8.D.1 features, 8.D.2 training, 8.D.3
+inference, 8.D.4 agent integration. The closure writeup is in
+[docs/PHASE8.md](PHASE8.md); this section captures the architectural and
+production decisions that aren't obvious from reading the code.
+
+### Why backfill before training (the architectural decision that made everything else possible)
+
+The original plan was "wait two weeks for live producers to accumulate
+training data." That works but gives a model that has never seen winter,
+never seen Christmas, never seen a heat wave — useless for a 24-hour
+forecast that needs to learn seasonal and weekly patterns.
+
+Backfill collapses the wait to ~30 minutes of compute and produces a
+dataset 100× larger and 50× more temporally rich.
+
+The architectural pattern is a lambda-architecture split:
+
+| Path | When | How | Source tag |
+|---|---|---|---|
+| Live ingestion | Continuous | Producer → Event Hubs → Bronze (streaming) | `live` |
+| Historical backfill | One-shot | API → Bronze direct (batch) | `*-backfill` |
+
+Both land in the same Bronze table. Silver MERGE on natural key
+deduplicates if any overlap occurs. Source-tagged envelopes preserve the
+audit trail so we can always tell which rows came through which path.
+
+This is the same pattern Netflix and Uber use for their batch-stream
+parity layers. It works here because Delta Lake's MERGE makes the
+deduplication free.
+
+### Phase 8.A — UK Carbon Intensity backfill (the simplest)
+
+The 14-day API limit was an undocumented trap. The docs say "up to 14
+days per request"; in practice the endpoint rejects exactly-14-day
+requests with a 400 error. Found this at chunk 1 of the full backfill;
+reduced chunk size to 7 days; ran clean across 156 chunks × 18 regions =
+~940K rows ingested.
+
+### Phase 8.B — ENTSO-E generation backfill (the hardest)
+
+XML response, mandatory API token, per-country queries, multi-Period
+TimeSeries inside each XML response, sub-hourly Points (PT15M) that have
+to be bucketed into hours.
+
+Three parser iterations before the data flowed cleanly:
+
+1. **`%pip install xmltodict` triggered a Python kernel restart** in
+   Databricks Serverless that wiped the widget values. Fixed by moving
+   the `%pip` cell to the very top and re-reading widgets in a separate
+   cell immediately after. This pattern recurs across all Phase 8
+   notebooks; documented as a convention here.
+
+2. **`series.get("Period", {})` failed** because `xmltodict` returns a
+   list when a TimeSeries has multiple Periods (which happens for
+   multi-day chunks) and a dict when there's only one. Fixed by
+   normalizing to a list and iterating.
+
+3. **GB returns empty** for historical A75 (Actual Generation per
+   Production Type). Confirmed via direct curl — this is a post-Brexit
+   data-sharing change, not a defect in our notebook. Documented as a
+   permanent limitation; the live producer covers GB through a different
+   ENTSO-E endpoint that still publishes it.
+
+Result: 131,453 silver rows across 5 EU countries × 3 years.
+
+### Phase 8.C — Open-Meteo weather backfill (the easy one)
+
+6 API calls total — one per city for the full 3-year range. JSON, no
+auth, multi-year ranges accepted in a single request.
+
+The non-obvious decision: **use the Historical Forecast API
+(`historical-forecast-api.open-meteo.com`), not the ERA5 reanalysis
+archive**. Reasoning:
+
+- The Historical Forecast API returns the same model output as the live
+  Forecast API — byte-identical schema, identical units
+- Training on it produces ZERO distributional shift between train and
+  inference (the live producer reads the same forecast endpoint in real
+  time)
+- ERA5 would have been more accurate as ground truth, but introduces a
+  train/inference mismatch that's avoidable
+
+This is the standard pattern for forecast-correction ML pipelines.
+
+After 8.C completed, `gold.fact_grid_hourly` unblocked at 131,453 rows
+(it had been stuck at 352 because the 3-way Silver join needs all three
+sources). That's the training input for 8.D.
+
+### Phase 8.D.1 — Feature engineering
+
+19 features derived from `fact_grid_hourly` materialized into
+`gold.feature_carbon_forecast`:
+
+- 8 current-state features (weather + generation + carbon)
+- 4 calendar features (hour, day-of-week, month, is_weekend)
+- 3 lag features (1h, 24h, 168h)
+- 2 rolling 24h trailing means
+- 1 categorical (country_code, passed as native LightGBM category)
+- 1 target (`target_t24h` — LEAD 24 of carbon_current)
+
+All windowed operations partition by `country_code` so each country's
+series is treated as an independent time series. Rolling stats use
+`rowsBetween(-24, -1)` — strictly trailing, exclusive of current row —
+to prevent target leakage.
+
+Boundary nulls (first week + last day per country) are dropped: from
+131,453 source rows to 130,493 feature rows. The 960-row delta matches
+the math exactly (5 countries × 192 boundary hours).
+
+Correlations measured before training showed strong signal:
+
+- `low_carbon_share_pct → carbon_current`: -0.98 to -0.99 across all
+  countries (near-tautological since carbon calc uses low-carbon share)
+- `carbon_lag_24h → carbon_current`: 0.50 to 0.81 (real day-over-day
+  persistence)
+- `current → target_t24h`: 0.50 to 0.81 (upper bound on what a model
+  can learn from these features)
+
+### Phase 8.D.2 — Training (LightGBM, single global model)
+
+Three model decisions, each with a sub-rationale:
+
+1. **LightGBM over XGBoost** — equivalent accuracy on tabular at this
+   row count (~130K), ~2× faster on Databricks Serverless, native
+   categorical support so no one-hot encoding needed.
+
+2. **Single global model with country as categorical** — over 5
+   per-country models. LightGBM's optimal-categorical-split algorithm
+   learns country-conditional patterns inside one tree forest. The
+   operational simplicity (one registration, one inference path, one
+   version to retrain) outweighs the marginal accuracy gain of
+   per-country models.
+
+3. **Point forecasts** — over quantile regression for confidence
+   intervals. Confidence intervals would require 3 separate quantile
+   regressors (p10, p50, p90) and complicate agent response logic.
+   Tracked as Phase 8.E if pursued.
+
+Train/test split: temporal at 2026-01-01. Train = 114,318 rows
+(2023-2025), test = 16,175 rows (2026 Jan-May). No random shuffle —
+mimics real-world deployment where you train on past and predict on
+future.
+
+### Reading the training results honestly
+
+```
+=== Test set ===
+MAE:  44.19 gCO2/kWh    RMSE: 68.00    R²: 0.828    MAPE: 21.2%
+
+=== Per-country ===
+  DE: MAE=79.21  R²=0.379  avg=356.2  ← weak
+  ES: MAE=20.91  R²=0.493  avg=112.9
+  FR: MAE= 7.00  R²=0.548  avg= 34.1
+  IT: MAE=31.69  R²=0.752  avg=294.7  ← strong
+  NL: MAE=81.85  R²=0.200  avg=386.3  ← very weak
+```
+
+The overall R² of 0.828 is **partly cross-country variance** — the
+model trivially learns "FR is cleaner than DE" and that alone reduces
+overall variance by a lot. The within-country R² is the more honest
+measure, and it's wildly uneven.
+
+This is a known pitfall of evaluating pooled models with a single
+overall R². Industry-standard practice is to report per-segment R²,
+which we did. The DE and NL gaps are real and have a plausible cause:
+those grids have higher hour-to-hour volatility from wind/solar swings
+that the current feature set doesn't capture well (no wind-forecast-error
+or solar-cloud-rate-of-change features).
+
+Documented as Phase 8.E. Pursuing per-country models is the obvious
+follow-up; not done in 8.D because the goal of 8.D was to ship a
+working end-to-end pipeline.
+
+### Phase 8.D.3 — Inference + Gold table
+
+`gold.fact_carbon_forecast` schema:
+
+| Column | Type | Purpose |
+|---|---|---|
+| country_code | STRING | Natural-key part 1 |
+| base_hour_utc | TIMESTAMP | Natural-key part 2 (when prediction was made FROM) |
+| target_hour_utc | TIMESTAMP | base + 24h |
+| horizon_h | INT | Always 24 (single-horizon design) |
+| predicted_carbon_gco2_kwh | DOUBLE | The ML prediction |
+| carbon_current_at_base | DOUBLE | Carbon at base time, for context |
+| model_name, model_version | STRING | Provenance |
+| generated_at | TIMESTAMP | When inference ran |
+
+MERGE on `(country_code, base_hour_utc)` makes re-runs idempotent.
+Inference materializes 7 days of predictions per run — cheap (845 rows
+total) and gives the agent richer context to talk about.
+
+### Phase 8.D.4 — Agent integration
+
+One new tool (`get_carbon_forecast`) added to the existing 5-tool
+agent. Three files touched: `tools.py`, `prompts.py`, `app.py`.
+
+This is the smallest code change of Phase 8 by line count. It's also
+the only piece a user can see and interact with at gridsense-carbon.streamlit.app.
+
+### The "prompt vs tool description" gotcha
+
+The most surprising production issue: **tightening the system prompt
+alone did not change LLM tool selection behavior**. When the agent kept
+asking "which country?" for multi-country forecast questions, three
+iterations of system-prompt tightening had no effect.
+
+What finally worked: rewriting the **OpenAI function description** in
+the tool schema in `tools.py`. The line:
+
+```python
+"description": "...Call this tool ONCE PER COUNTRY. If the user asks
+about 'tomorrow's grid', 'the grid', or doesn't specify a country, call
+this tool 5 times in parallel (one for each of DE, ES, FR, IT, NL) and
+synthesize the results — DO NOT ask the user to pick a country..."
+```
+
+Once that landed, the agent immediately orchestrated 5 parallel tool
+calls for unscoped forecast questions.
+
+**Lesson:** OpenAI's tool-calling behavior is dominated by the function
+descriptions in the tool schema, not by the system prompt. Tool
+descriptions are what the LLM sees during the tool-selection decision;
+the system prompt is general context applied to the conversation.
+Future agent-tool work should put routing guidance directly in the tool
+description.
+
+### The "Streamlit Cloud Python process caching" gotcha
+
+The second surprising production issue: **Streamlit Cloud auto-deploys
+do not always invalidate the running Python process across all
+replicas**. After pushing the strengthened tool description (commit
+`334e4a6`), the Cloud logs showed `🔄 Updated app!` — but production
+behavior continued to use the old prompt. Local Streamlit (same code,
+same secrets) worked perfectly.
+
+The fix: clicking **"Reboot app"** in the Streamlit Cloud dashboard,
+which forces a full restart across all replicas. Auto-deploy alone
+isn't enough.
+
+**Lesson:** Streamlit Cloud's auto-deploy is fast (~90 seconds) but it
+does in-place hot-reload, not a full process restart. For changes that
+affect module-level imports (like the SYSTEM_PROMPT loaded at module
+load time), manual reboot is the reliable path. Worth knowing for any
+future Streamlit Cloud deployment that depends on module-level state.
+
+### What the live URL now demonstrates
+
+A recruiter clicking gridsense-carbon.streamlit.app and asking
+*"What does the model predict for tomorrow's grid?"* sees:
+
+1. A natural-language ranked summary of 5 countries with current →
+   predicted carbon intensity
+2. A *"Show data sources used (5)"* expander revealing 5 parallel
+   `get_carbon_forecast` tool calls
+3. Real numbers from `gold.fact_carbon_forecast` materialized by the
+   LightGBM model registered in Unity Catalog
+
+The full chain — from `historical-forecast-api.open-meteo.com` to a
+formatted answer in a chat UI — runs in under 5 seconds. Every step
+exists in the repo and is reproducible end-to-end.
+
+### Build pipeline
+
+| Sub-phase | Notebook | Bundle job | Verification |
+|---|---|---|---|
+| 8.A | `backfill/backfill_carbon_intensity.py` | `backfill_carbon_intensity.yml` | `phase8a_backfill_summary.sql` |
+| 8.B | `backfill/backfill_entsoe.py` | `backfill_entsoe.yml` | `phase8b_backfill_summary.sql` |
+| 8.C | `backfill/backfill_open_meteo.py` | `backfill_open_meteo.yml` | `phase8c_backfill_summary.sql` |
+| 8.D.1 | `ml/features_carbon_forecast.py` | `ml_features_carbon_forecast.yml` | `phase8d1_features_summary.sql` |
+| 8.D.2 | `ml/train_carbon_forecast.py` | `ml_train_carbon_forecast.yml` | `phase8d2_training_summary.sql` |
+| 8.D.3 | `ml/infer_carbon_forecast.py` | `ml_infer_carbon_forecast.yml` | `phase8d3_inference_summary.sql` |
+| 8.D.4 | `streamlit_app/agent/tools.py` etc. | (no bundle — Streamlit Cloud auto-deploy) | live URL |
+
+All bundle jobs are paused (cron set to 2099) — manual run only for
+this portfolio project. In production they would be unpaused and
+scheduled.
+
+### What Phase 8 means for the portfolio narrative
+
+Before Phase 8, the repo was a strong streaming-data project with a
+GenAI agent layered on top. Phase 8 adds the missing piece: **a real
+ML model that the agent uses to answer questions about the future**.
+
+The narrative now spans the full modern-data-stack arc:
+streaming → lakehouse → ML → GenAI → live URL. Each piece grounded
+in real data with honest results. The agent doesn't pretend; the
+model doesn't oversell; the writeup names what's weak.
+
+That's the engineering judgment the writeup tries to demonstrate — not
+"I trained a model that gets R²=0.83" but "I trained a model that gets
+R²=0.83 overall and R²=0.20 for the Netherlands, and here's why and
+what I'd do next."
