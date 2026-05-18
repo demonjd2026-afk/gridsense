@@ -73,7 +73,7 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 | 5. Bronze layer streaming | ✅ Done (3 tables, hourly ingest) |
 | 6. Silver layer (cleansing + joins) | ✅ Done (5 tables incl. grid_state 3-way join) |
 | 7. Gold layer (star schema) | ✅ Done (4 dims + 3 facts; integrated fact_grid_hourly is the Phase 8 ML training table) |
-| 8. ML forecasting (MLflow) | 🚧 In progress — data backfilled (8.A/B/C: 3-year history, ~2.7M rows in the lakehouse), model training (8.D) pending |
+| 8. ML forecasting (MLflow) | ✅ Done — LightGBM forecast model trained on 3yr history, live in agent ([docs/PHASE8.md](docs/PHASE8.md)) |
 | 9. GenAI agent | ✅ Done ([Live demo](https://gridsense-carbon.streamlit.app)) |
 | 10. Dashboards (Databricks AI/BI) | ✅ Done — 3 dashboards, see [docs/PHASE10.md](docs/PHASE10.md) |
 | 11. CI/CD (GitHub Actions) | ✅ Done — Terraform + Bundle deploy via OIDC federation, no client secrets ([docs/PHASE11.md](docs/PHASE11.md)) |
@@ -99,7 +99,7 @@ flowchart LR
     B3 --> S
     S --> G[Gold star schema<br/>✅ Phase 7]
     G --> PBI[Dashboards<br/>✅ Phase 10]
-    G --> ML[ML Forecasting<br/>🚧 Phase 8: data ready, training pending]
+    G --> ML[ML Forecasting<br/>✅ Phase 8]
     G --> AI[GenAI Briefing<br/>✅ Phase 9]
 
     classDef done fill:#1f6f43,stroke:#2ecc71,color:#fff
