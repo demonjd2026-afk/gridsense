@@ -374,6 +374,8 @@ A 6th tool added to the agent: `get_carbon_forecast(country_code)`. The
 agent already had 5 tools for querying current state; the new tool queries
 `gold.fact_carbon_forecast` for the latest prediction per country.
 
+![Single-country forecast: agent answers "Will Germany be cleaner tomorrow than today?" with current 395.4 → predicted 366.3 gCO2/kWh, citing the get_carbon_forecast tool call](screenshots/phase8/phase8-1-de-forecast.png)
+
 | File | Change |
 |---|---|
 | `streamlit_app/agent/tools.py` | Function + OpenAI schema + registry entry |
@@ -398,6 +400,8 @@ That entire interaction is **2 SQL queries against a Gold fact table
 holding pre-computed LightGBM predictions** — but to the user it looks
 like the agent "knows" things. That's the magic of grounding GenAI in
 real data.
+
+![Multi-country forecast: agent answers "What does the model predict for tomorrow's grid?" by orchestrating 5 parallel get_carbon_forecast tool calls and synthesizing them into a ranked summary. The expanded "Show data sources used (5)" footer reveals all 5 ML tool calls.](screenshots/phase8/phase8-2-all-eu-forecast-expanded.png)
 
 ### What this does NOT do
 
