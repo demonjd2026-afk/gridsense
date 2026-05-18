@@ -253,11 +253,16 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "get_carbon_forecast",
             "description": (
-                "Get the 24-hour-ahead carbon intensity forecast for one EU country, "
-                "produced by a LightGBM model trained on 3 years of historical data. "
-                "Use for 'will country X be cleaner tomorrow?', 'what's the forecast?', "
-                "'should I schedule my workload for tomorrow?' questions. Returns the "
-                "current carbon level, the predicted level 24h from now, and the "
+                "Get the 24-hour-ahead carbon intensity ML forecast for ONE EU country. "
+                "This is the ONLY correct tool for any question about tomorrow, the "
+                "future, the next 24h, or predictions for an EU country (DE/ES/FR/IT/NL). "
+                "NEVER answer future questions from get_24h_carbon_trend (that tool "
+                "returns past data only). "
+                "Call this tool ONCE PER COUNTRY. If the user asks about 'tomorrow's "
+                "grid', 'the grid', 'Europe', or doesn't specify a country, call this "
+                "tool 5 times in parallel (one for each of DE, ES, FR, IT, NL) and "
+                "synthesize the results — DO NOT ask the user to pick a country. "
+                "Returns current carbon level, predicted level 24h from now, and "
                 "expected change in gCO2/kWh."
             ),
             "parameters": {
