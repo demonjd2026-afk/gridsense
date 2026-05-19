@@ -8,6 +8,9 @@ A near-real-time data lakehouse that ingests electricity grid telemetry from 30+
 
 **Live demo:** [gridsense-carbon.streamlit.app](https://gridsense-carbon.streamlit.app) — ask the GenAI agent live questions about EU/UK grid carbon intensity.
 
+![GridSense end-to-end architecture: streaming ingestion → Databricks lakehouse → LightGBM ML pipeline → live GenAI agent](docs/architecture-diagrams/gridsense-architecture.png)
+
+
 
 ### Try asking the live agent
 
