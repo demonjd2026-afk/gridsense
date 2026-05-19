@@ -213,41 +213,32 @@ If a user reports the agent gave a wrong answer:
 
 ## 5. Common operational scenarios
 
-### "I want to start sending applications this week"
+### "I need fresh data in the demo"
 
-```text
-Monday morning IST:
-  1. Trigger manual data refresh (section 2 above)
-  2. Open https://gridsense-carbon.streamlit.app
-  3. Ask 2-3 example questions; verify agent works
-  4. Verify dashboards render correctly
+If `gold.fact_carbon_intensity_30min` or `gold.fact_carbon_forecast`
+hasn't been refreshed recently, the agent's "today" and "tomorrow"
+answers will reference stale timestamps. To refresh:
 
-Monday-Friday:
-  - Apply to 15-20 roles
-  - Recruiters will click the live URL within 2-7 days
-  - Agent serves them with fresh data
+1. Run the manual job sequence (section 2 above) — ~35 minutes wall-time
+2. Verify with the SQL query in section 2 ("Verifying the refresh worked")
+3. Re-test the agent at https://gridsense-carbon.streamlit.app with
+   any of the example questions in the live demo sidebar
 
-Following weekend:
-  - Re-pause schedules if you unpaused them
-  - Cost incurred: ~₹100-200 for the one refresh
-```
+Cost: ~₹50-100 per full refresh in Databricks Serverless compute.
 
-### "I want to demo the project to a recruiter on a call"
+### "I want to showcase the system to a stakeholder"
 
-```text
-Day before:
-  1. Manual data refresh (section 2)
-  2. Test the agent with the questions you plan to ask
-  3. Prepare backup screenshots in case live demo fails
+1. Refresh data the day before (section 2)
+2. Walk through `docs/architecture-diagrams/gridsense-architecture.png`
+   to explain the four-stage pipeline
+3. Open https://gridsense-carbon.streamlit.app live
+4. Demonstrate grounding: ask a question, expand "Show data source used"
+   to reveal the SQL tool calls
+5. Demonstrate forecasting: ask "What does the model predict for
+   tomorrow's grid?" to show multi-country parallel orchestration
+6. For technical follow-up, point to `docs/PHASE8.md` (ML rationale)
+   and `docs/architecture.md` (design decisions + production gotchas)
 
-During the call:
-  - Open https://gridsense-carbon.streamlit.app in browser
-  - Ask: "Will Germany be cleaner tomorrow than today?"
-  - When the answer renders, click the "Show data source used" footer
-    to demonstrate transparency
-  - Ask: "What does the model predict for tomorrow's grid?" to
-    demonstrate multi-country tool orchestration
-```
 
 ### "The agent is returning errors"
 
