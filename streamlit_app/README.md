@@ -1,8 +1,11 @@
 # GridSense Carbon Briefing Agent
 
 A Streamlit web app that answers natural-language questions about EU and UK
-grid carbon intensity. Uses Azure OpenAI (gpt-4.1-mini) with five SQL-backed
-tools that query the GridSense lakehouse on Databricks Unity Catalog.
+grid carbon intensity. Uses Azure OpenAI (gpt-4.1-mini) with six SQL-backed
+tools that query the GridSense lakehouse on Databricks Unity Catalog —
+including a LightGBM-powered 24-hour forecast tool.
+
+Live at: [gridsense-carbon.streamlit.app](https://gridsense-carbon.streamlit.app)
 
 ## Architecture
 
@@ -15,13 +18,15 @@ Streamlit chat UI
     ▼
 gpt-4.1-mini (Azure OpenAI, swedencentral)
     │  decides which tool(s) to call
+    │  can orchestrate multiple parallel tool calls
     ▼
-One of 5 SQL tools:
-    - get_eu_carbon_rankings    →  fact_grid_hourly
-    - get_uk_regional_carbon    →  fact_carbon_intensity_30min
-    - get_country_fuel_mix      →  fact_generation_fuel_hourly
-    - get_24h_carbon_trend      →  fact_grid_hourly
-    - get_cleanest_window_uk    →  fact_carbon_intensity_30min
+One of 6 tools:
+    - get_eu_carbon_rankings    →  gold.fact_grid_hourly
+    - get_uk_regional_carbon    →  gold.fact_carbon_intensity_30min
+    - get_country_fuel_mix      →  gold.fact_generation_fuel_hourly
+    - get_24h_carbon_trend      →  gold.fact_grid_hourly
+    - get_cleanest_window_uk    →  gold.fact_carbon_intensity_30min
+    - get_carbon_forecast       →  gold.fact_carbon_forecast (ML predictions)
     │
     ▼
 Databricks SQL Warehouse (serverless, auto-resumes)
@@ -31,7 +36,24 @@ Tool result fed back to the LLM
     │
     ▼
 Natural-language answer with citations
+    │
+    └──→ "Show data source used (N)" expander reveals exact tool calls
 ```
+
+## The six tools in detail
+
+| Tool | Returns | Backing table |
+|---|---|---|
+| `get_eu_carbon_rankings` | Current carbon ranking across 5 EU countries | `gold.fact_grid_hourly` |
+| `get_uk_regional_carbon` | Carbon intensity for a UK region (or all regions) | `gold.fact_carbon_intensity_30min` |
+| `get_country_fuel_mix` | Generation breakdown by fuel type for a country | `gold.fact_generation_fuel_hourly` |
+| `get_24h_carbon_trend` | 24-hour carbon time series for a country | `gold.fact_grid_hourly` |
+| `get_cleanest_window_uk` | Optimal 4-hour window for low-carbon UK activity | `gold.fact_carbon_intensity_30min` |
+| `get_carbon_forecast` | 24-hour-ahead ML forecast for a country (Phase 8) | `gold.fact_carbon_forecast` |
+
+The forecast tool is the Phase 8 addition. It queries pre-computed
+predictions from a LightGBM model (R²=0.83 on test), enabling questions
+like *"Will Germany be cleaner tomorrow than today?"*.
 
 ## Run locally
 
@@ -48,62 +70,101 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 streamlit run app.py
 ```
 
-App opens at `http://localhost:8501`. First query may take ~30 seconds while
-the Databricks Serverless warehouse warms up.
+App opens at `http://localhost:8501`. First query may take ~30 seconds
+while the Databricks Serverless warehouse warms up.
 
 ## Deploy to Streamlit Community Cloud
 
 1. Push this repo to GitHub (already done if you're reading this).
-2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
+2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in
+   with GitHub.
 3. Click **New app**:
    - Repository: `demonjd2026-afk/gridsense`
    - Branch: `main`
    - Main file path: `streamlit_app/app.py`
-4. In **Advanced settings → Secrets**, paste the contents of
-   your `.streamlit/secrets.toml` (the real one, not the example).
+4. In **Advanced settings → Secrets**, paste the contents of your
+   `.streamlit/secrets.toml` (the real one, not the example).
 5. Deploy. URL will be something like
    `https://gridsense-<hash>.streamlit.app`.
 
-The free tier sleeps after ~7 days of inactivity and wakes on first hit
-(takes ~10 seconds). Good enough for portfolio demo URLs.
+### ⚠️ Important deploy caveat
+
+**Streamlit Cloud auto-deploy does NOT always restart the Python
+process.** After pushing a code change, you may see "🔄 Updated app!"
+in the logs but the OLD behavior persists in production.
+
+The fix: click **"Reboot app"** in the Streamlit Cloud dashboard
+(`https://share.streamlit.io` → your app → three-dot menu → Reboot).
+
+This is required when changes affect module-level state — system
+prompts loaded at import time, rate limit constants, tool definitions.
+Hot-reload alone is not sufficient.
+
+Discovered during Phase 8.D.4 debugging; documented in
+[../docs/runbook.md](../docs/runbook.md) and
+[../docs/architecture.md](../docs/architecture.md).
+
+## Rate limits
+
+The agent enforces two rate limits to bound Azure OpenAI costs:
+
+| Limit | Value | Scope | Why |
+|---|---|---|---|
+| Per-session | 10 questions | Browser session | Prevents one user from exhausting budget |
+| Daily global | 200 questions | All users, UTC day | Total daily token cap |
+
+When a limit is hit, the agent gracefully refuses further questions
+until the next session/day. The sidebar shows current usage.
+
+To adjust limits: edit `agent/tools.py` (per-session) or `app.py`
+(daily). After deploy, **reboot the app** (see caveat above) for
+changes to take effect.
 
 ## Example questions
 
-- "What's the cleanest EU country right now?"
-- "Why is Germany so dirty right now?"
-- "Which UK region is cleanest?"
-- "How has France's carbon trended over the last 24 hours?"
-- "When should I run my UK batch job for lowest carbon?"
+The agent excels at these patterns:
 
-The agent should call exactly one tool per question, except when a question
-combines two angles (e.g., "compare DE vs FR" might call get_country_fuel_mix twice).
+- **Current state**: "What's the cleanest EU country right now?"
+- **Forecasts** (Phase 8): "Will Germany be cleaner tomorrow than today?"
+- **Multi-country**: "What does the model predict for tomorrow's grid?"
+- **Explanations**: "Why is Germany so dirty right now?"
+- **UK-specific**: "Which UK region is cleanest?"
+- **Trends**: "How has France's carbon trended over the last 24 hours?"
+- **Optimization**: "When should I run my UK batch job for lowest carbon?"
 
-## Why these design choices
+The agent should call exactly one tool per single-country question.
+For multi-country forecast questions ("the grid", "all of EU"), it
+orchestrates 5 parallel `get_carbon_forecast` calls and synthesizes
+the results.
 
-**Why Streamlit Cloud, not Azure Container Apps?**
-Free hosting, deploys from GitHub directly, zero infra burden. The agent
-already runs on Azure (OpenAI) and queries Azure (Databricks); the *UI*
-hosting cost is incidental.
+## Files in this folder
 
-**Why GPT-4.1-mini, not GPT-4o-mini?**
-Newer model (April 2025), cheaper per token, better tool-calling
-accuracy for simple SQL-backed tools. gpt-4o-mini's `2024-07-18`
-version was deprecated in Azure in March 2026.
+```
+streamlit_app/
+├── README.md            # This file
+├── app.py               # Streamlit UI and rate limit enforcement
+├── requirements.txt     # Python dependencies
+└── agent/
+    ├── tools.py         # 6 SQL tool definitions + OpenAI function schemas
+    └── prompts.py       # SYSTEM_PROMPT for tool routing
+```
 
-**Why 5 tools, not 1 generic SQL tool?**
-Bounded tool surface reduces hallucination and SQL-injection risk.
-Each tool is a hand-written query with parameter validation;
-the LLM picks which to call, not what SQL to write.
+## Cost notes (FinOps)
 
-**Why does this exist alongside the dashboards?**
-Dashboards answer "show me the data." The agent answers "tell me what
-the data means" — a different cognitive mode. Both are valid; both are
-in the portfolio.
+| Cost component | Approximate |
+|---|---|
+| Azure OpenAI per question | ~₹1-3 (~$0.01-0.03) |
+| Daily budget (200 questions × ₹2 avg) | ~₹400/day worst case |
+| Realistic daily usage (portfolio demo) | ~₹20-50/day |
+| Databricks SQL warehouse (when queried) | ~₹5-10 per query (serverless auto-resume) |
 
-## What this does NOT do (deliberately)
+Full cost breakdown for the entire GridSense project is in
+[../docs/runbook.md](../docs/runbook.md).
 
-- No ML forecasts (Phase 8 not yet shipped — agent extends to use forecasts
-  when that fact lands)
-- No write operations to the lakehouse (read-only by design)
-- No history beyond the current session (no persistent memory store)
-- No multi-region routing (single Azure OpenAI deployment is fine for portfolio)
+## Related docs
+
+- [../docs/PHASE9.md](../docs/PHASE9.md) — Phase 9 agent implementation
+- [../docs/PHASE8.md](../docs/PHASE8.md) — Phase 8 ML forecasting (the
+  forecast tool's training pipeline)
+- [../docs/runbook.md](../docs/runbook.md) — Operational runbook
+- [../docs/architecture.md](../docs/architecture.md) — System architecture
