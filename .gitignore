@@ -153,3 +153,6 @@ scratch/
 sandbox/
 *.scratch
 _local_notes.md
+
+# Local development reference notes — gitignored, do not commit
+_local_notes.md
