@@ -61,7 +61,7 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 - **Secrets:** Azure Key Vault, surfaced via UAMI to Container Apps and via KV-backed secret scope to Databricks
 - **IaC:** Terraform + Databricks Asset Bundles
 - **CI/CD:** GitHub Actions with OIDC federation (no client secrets); Terraform + Databricks Asset Bundles deploy on push to main
-- **Monitoring:** Azure Monitor + Log Analytics (planned, Phase 12)
+- **Monitoring:** Deferred (see [runbook](docs/runbook.md) for rationale); would reach for Application Insights for the producers and Databricks-native lakehouse monitoring if implemented
 
 ## Project status
 
@@ -75,12 +75,12 @@ See the **[Live status diagram](#live-status-as-built)** below for the as-built 
 | 4. Data producers (Container Apps) | ✅ Done (3 producers live) |
 | 5. Bronze layer streaming | ✅ Done (3 tables, hourly ingest) |
 | 6. Silver layer (cleansing + joins) | ✅ Done (5 tables incl. grid_state 3-way join) |
-| 7. Gold layer (star schema) | ✅ Done (4 dims + 3 facts; integrated fact_grid_hourly is the Phase 8 ML training table) |
+| 7. Gold layer (star schema) | ✅ Done — 4 dims + 4 facts; `fact_grid_hourly` is the Phase 8 ML training table, `fact_carbon_forecast` materializes ML predictions |
 | 8. ML forecasting (MLflow) | ✅ Done — LightGBM forecast model trained on 3yr history, live in agent ([docs/PHASE8.md](docs/PHASE8.md)) |
 | 9. GenAI agent | ✅ Done ([Live demo](https://gridsense-carbon.streamlit.app)) |
 | 10. Dashboards (Databricks AI/BI) | ✅ Done — 3 dashboards, see [docs/PHASE10.md](docs/PHASE10.md) |
 | 11. CI/CD (GitHub Actions) | ✅ Done — Terraform + Bundle deploy via OIDC federation, no client secrets ([docs/PHASE11.md](docs/PHASE11.md)) |
-| 12. Monitoring & observability | ⚪ Not started |
+| 12. Monitoring & observability | 🟡 Deferred — deliberate scope decision, see [runbook](docs/runbook.md) for rationale |
 
 ## Live status (as-built)
 
@@ -194,7 +194,7 @@ make azure-whoami      # show current Azure CLI account
 ## Documentation
 
 - [Architecture deep-dive](docs/architecture.md) — implementation log with per-phase design decisions, issues, and resolutions
-- [Operational runbook](docs/runbook.md) — *(coming in Phase 12)*
+- [Operational runbook](docs/runbook.md) — day-to-day operations, FinOps cost tables, debugging, and known gotchas from production
 
 ## License
 
